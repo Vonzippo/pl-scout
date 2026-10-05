@@ -115,6 +115,8 @@ input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;padding:0
 .msg.ai li{margin:3px 0}
 .msg.ai strong{color:var(--accent)}
 .msg.err{border-color:var(--bad);color:var(--bad)}
+.mdt{border-collapse:collapse;margin:8px 0;min-width:0;width:auto}
+.mdt th,.mdt td{border:1px solid var(--line);padding:4px 8px;text-align:left;white-space:normal;position:static;background:transparent;cursor:default;font-size:13px}
 .activity{color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
 .sources{margin-top:10px;font-size:12px;color:var(--muted)}
 .sources a{display:inline-block;margin-right:10px}
@@ -157,7 +159,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 
   <section id="viewCoach" hidden>
     <div class="card coach">
-      <h2>KI-Coach <span>bereitet deine Frage mit Team und Stats vor und öffnet sie in deinem Claude-Chat (läuft über dein Abo)</span></h2>
+      <h2>KI-Coach <span>analysiert dein Team, sucht aktuelle News im Web und gibt dir konkrete Tipps</span></h2>
       <div class="chips" id="chips">
         <button data-q="Wer ist für den nächsten Spieltag die beste Aufstellung aus meinem Kader? Prüfe aktuelle Verletzungen, Sperren und voraussichtliche Aufstellungen.">⚽ Beste Aufstellung</button>
         <button data-q="Welche freien Spieler sollte ich jetzt vom Waiver holen und wen dafür abgeben? Berücksichtige Form, Prognose, Spielplan und aktuelle News.">🔁 Waiver-Tipps</button>
@@ -166,14 +168,21 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
         <button data-q="Analysiere mein Team: Stärken, Schwächen, Positionen mit Handlungsbedarf, und wie ich im Vergleich zu meinen Mitspielern dastehe.">📊 Team-Analyse</button>
       </div>
       <textarea id="chatIn" rows="3" placeholder="Eigene Frage, z. B. «Soll ich Saka oder Palmer aufstellen?» oder «Wie geht es Isak aktuell?»" style="font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical"></textarea>
+      <div class="chatlog" id="chatlog"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="primary" id="openWeb">In Claude öffnen</button>
-        <button id="openApp">In Claude-App öffnen</button>
+        <button class="primary" id="askBtn">Coach fragen</button>
+        <button class="ghost" id="chatClear">Chat leeren</button>
+        <label class="empty" style="display:flex;gap:6px;align-items:center">Coach-Passwort <input id="coachKey" type="password" size="16" autocomplete="current-password"></label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="empty">Alternativ in Claude:</span>
+        <button class="ghost" id="openWeb">In Claude öffnen</button>
+        <button class="ghost" id="openApp">In Claude-App öffnen</button>
         <button class="ghost" id="copyPrompt">Prompt kopieren</button>
         <span class="empty" id="coachMsg"></span>
       </div>
       <details><summary class="empty" style="cursor:pointer">Vorschau des Prompts</summary><pre class="raw" id="promptPreview" style="max-height:320px;white-space:pre-wrap"></pre></details>
-      <div class="empty">Claude öffnet sich mit der vorbereiteten Nachricht – du musst nur noch auf Senden drücken. Für aktuelle News sollte in Claude die Websuche eingeschaltet sein.</div>
+      <div class="empty">Der Coach nutzt das Modell gpt-oss-120b über Groq inkl. Websuche. Antworten dauern meist 5–30 Sekunden.</div>
     </div>
   </section>
 
@@ -681,6 +690,66 @@ function buildPrompt(question){
   for(const b of blocks){ if(text.length + b.length > MAX_PROMPT) break; text += '\n' + b; }
   return text;
 }
+const chat = [];
+let chatBusy = false;
+function md(src){
+  const inline = t => esc(t)
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const out = []; let list = null; let table = null;
+  const close = () => { if(list){ out.push(`</${list}>`); list = null; } if(table){ out.push('</tbody></table>'); table = null; } };
+  for(const raw of src.split('\n')){
+    const line = raw.trimEnd(); let m;
+    if(/^\s*\|.*\|\s*$/.test(line)){
+      const cells = line.trim().slice(1,-1).split('|').map(c => c.trim());
+      if(cells.every(c => /^:?-{2,}:?$/.test(c))) continue;
+      if(!table){ close(); out.push('<table class="mdt"><tbody>'); table = true; out.push('<tr>'+cells.map(c=>`<th>${inline(c)}</th>`).join('')+'</tr>'); }
+      else out.push('<tr>'+cells.map(c=>`<td>${inline(c)}</td>`).join('')+'</tr>');
+      continue;
+    }
+    if(!line.trim()){ close(); continue; }
+    if((m = line.match(/^#{1,6}\s+(.*)/))){ close(); out.push(`<h4>${inline(m[1])}</h4>`); continue; }
+    if((m = line.match(/^\s*[-*•]\s+(.*)/))){ if(list!=='ul'){ close(); out.push('<ul>'); list='ul'; } out.push(`<li>${inline(m[1])}</li>`); continue; }
+    if((m = line.match(/^\s*\d+[.)]\s+(.*)/))){ if(list!=='ol'){ close(); out.push('<ol>'); list='ol'; } out.push(`<li>${inline(m[1])}</li>`); continue; }
+    close(); out.push(`<p>${inline(line)}</p>`);
+  }
+  close(); return out.join('');
+}
+function renderChat(){
+  const log = $('chatlog');
+  log.innerHTML = chat.map(m => {
+    if(m.role === 'user') return `<div class="msg user">${esc(m.shown || m.content)}</div>`;
+    if(m.pending) return `<div class="msg ai"><span class="dots">Analysiert Daten und sucht aktuelle News</span></div>`;
+    const act = m.queries && m.queries.length ? `<div class="activity">${m.queries.map(q=>`<span>🔎 ${esc(q)}</span>`).join('')}</div>` : '';
+    const src = m.sources && m.sources.length ? `<div class="sources">Quellen: ${m.sources.map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`).join('')}</div>` : '';
+    return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content)}${src}</div>`;
+  }).join('');
+  log.lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+async function askCoach(){
+  const question = $('chatIn').value.trim();
+  if(!question || chatBusy || !players.length) return;
+  chatBusy = true; $('askBtn').disabled = true; $('chatIn').value = '';
+  // Erste Frage bekommt alle Daten; Folgefragen ebenfalls (Kader kann sich ändern), Anzeige zeigt nur die Frage
+  chat.push({ role:'user', content: buildPrompt(question), shown: question });
+  const ai = { role:'assistant', pending:true, content:'' };
+  chat.push(ai); renderChat();
+  try {
+    const history = chat.filter(m => m !== ai && !m.error && !m.pending);
+    // nur die letzte Nutzerfrage mit vollem Datenblock schicken, ältere gekürzt
+    const msgs = history.map((m,i) => ({ role:m.role, content: (m.role==='user' && i < history.length-1) ? (m.shown||m.content) : m.content }));
+    const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs }) });
+    let j = null; try { j = await res.json(); } catch(e){}
+    if(!res.ok || !j) throw new Error((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status));
+    ai.content = j.answer + (j.truncated ? '\n\n*(Antwort wurde gekürzt.)*' : '');
+    ai.sources = j.sources || []; ai.queries = j.queries || [];
+  } catch(e){
+    ai.error = e.message;
+  } finally {
+    ai.pending = false; chatBusy = false; $('askBtn').disabled = false; renderChat();
+  }
+}
 function currentQuestion(){ return $('chatIn').value.trim() || 'Gib mir eine Einschätzung meines Teams für den nächsten Spieltag.'; }
 function refreshPreview(){ if(players.length) $('promptPreview').textContent = buildPrompt(currentQuestion()); }
 function coachMsg(t){ $('coachMsg').textContent = t; if(t) setTimeout(() => { if($('coachMsg').textContent === t) $('coachMsg').textContent = ''; }, 4000); }
@@ -738,7 +807,12 @@ async function doLoadLeague(){
   } catch(e){ setStatus('Sleeper: '+e.message, true); }
 }
 $('loadLeague').addEventListener('click', doLoadLeague);
-$('chips').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; $('chatIn').value = b.dataset.q; refreshPreview(); });
+$('chips').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; $('chatIn').value = b.dataset.q; refreshPreview(); askCoach(); });
+$('askBtn').addEventListener('click', () => askCoach());
+$('chatIn').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); askCoach(); } });
+$('chatClear').addEventListener('click', () => { if(!chatBusy){ chat.length = 0; renderChat(); } });
+$('coachKey').value = store.get('coachKey') || '';
+$('coachKey').addEventListener('change', e => store.set('coachKey', e.target.value));
 $('chatIn').addEventListener('input', refreshPreview);
 $('openWeb').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); window.open('https://claude.ai/new?q=' + encodeURIComponent(t), '_blank', 'noopener'); });
 $('openApp').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); location.href = 'claude://claude.ai/new?q=' + encodeURIComponent(t); });
