@@ -1,0 +1,2 @@
+/api/fpl/*      https://fantasy.premierleague.com/api/:splat   200!
+/api/sleeper/*  https://api.sleeper.app/v1/:splat              200!

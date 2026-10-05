@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PL Scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;--panel:#151b24;--panel2:#1c2430;--line:#2a3442;--text:#e6edf3;--muted:#8b98a8;
+  --accent:#37e39b;--accent2:#5aa9ff;--warn:#ffb648;--bad:#ff5d6c;
+  --f1:#1f9d55;--f2:#62c370;--f3:#8b98a8;--f4:#e8794a;--f5:#d6334a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:14px}
+a{color:var(--accent2)}
+header{padding:18px 20px 10px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:#06110c;font-weight:800}
+.brand h1{font-size:18px;margin:0}
+.brand small{color:var(--muted);display:block;font-weight:500}
+.league{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+input:focus,select:focus{outline:2px solid var(--accent2);outline-offset:-1px}
+button{cursor:pointer;font-weight:600}
+button.primary{background:var(--accent);color:#06110c;border-color:var(--accent)}
+button.ghost{background:transparent}
+main{padding:14px 20px 40px;max-width:1500px;margin:0 auto}
+.status{color:var(--muted);font-size:13px;margin:4px 0 12px;min-height:18px}
+.status.err{color:var(--bad)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:12px}
+.filters label{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--panel2);padding:7px 11px}
+.seg button.on{background:var(--accent2);color:#04101f}
+.grid2{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px}
+@media(min-width:1000px){.grid2{grid-template-columns:1fr 1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.card h2{font-size:14px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card h2 span{color:var(--muted);font-weight:500;font-size:12px}
+details.card summary{cursor:pointer;font-weight:700}
+.scoring{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
+.scoring label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+.scoring input{width:100%}
+pre.raw{background:var(--panel2);border-radius:8px;padding:8px;max-height:180px;overflow:auto;font-size:11px;color:var(--muted)}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);max-height:75vh}
+table{border-collapse:collapse;width:100%;min-width:1100px}
+thead th{position:sticky;top:0;background:var(--panel2);z-index:2;text-align:right;font-size:12px;color:var(--muted);padding:9px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
+thead th.l{text-align:left}
+thead th.sorted{color:var(--accent)}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+tbody td.l{text-align:left}
+tbody tr:hover{background:#1a2230}
+tbody tr.mine{background:rgba(90,169,255,.08)}
+tbody tr.sel{background:rgba(55,227,155,.10)}
+.pname{font-weight:600}
+.pname small{color:var(--muted);font-weight:400;margin-left:4px}
+.pos{font-size:11px;font-weight:700;padding:2px 6px;border-radius:5px}
+.pos.GKP{background:#3b2f0e;color:#ffd166}.pos.DEF{background:#0e2f22;color:#37e39b}.pos.MID{background:#0e2440;color:#5aa9ff}.pos.FWD{background:#3a1220;color:#ff7a8a}
+.fdr{display:inline-flex;gap:2px}
+.fdr span{font-size:10px;font-weight:700;padding:2px 4px;border-radius:4px;color:#fff;min-width:30px;text-align:center}
+.d1{background:var(--f1)}.d2{background:var(--f2)}.d3{background:#4b5563}.d4{background:var(--f4)}.d5{background:var(--f5)}
+.news{color:var(--warn);cursor:help}
+.news.bad{color:var(--bad)}
+.owner{font-size:12px;color:var(--muted)}
+.owner.free{color:var(--accent);font-weight:600}
+.owner.me{color:var(--accent2);font-weight:700}
+.big{font-weight:700;color:var(--accent)}
+.mono{font-family:"JetBrains Mono",monospace}
+.cmp table{min-width:0}
+.cmp td,.cmp th{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line)}
+.cmp th{position:static;cursor:default;background:transparent}
+.cmp td.best{color:var(--accent);font-weight:700}
+.cmp td.l,.cmp th.l{text-align:left}
+.tips li{margin:6px 0;line-height:1.4}
+.tips b{color:var(--accent)}
+.empty{color:var(--muted);font-size:13px}
+.x{background:none;border:0;color:var(--muted);padding:0 4px;cursor:pointer}
+input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;padding:0}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
+@media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="logo">PL</div><div><h1>PL Scout</h1><small id="gwinfo">Premier League · Spieler-Vergleich für Sleeper</small></div></div>
+  <div class="league">
+    <input id="leagueId" placeholder="Sleeper League-ID" size="22" inputmode="numeric">
+    <select id="meSel" title="Wer bist du in der Liga?"><option value="">– ich bin … –</option></select>
+    <button class="primary" id="loadLeague">Liga laden</button>
+  </div>
+</header>
+<main>
+  <div class="status" id="status">Lade Spielerdaten …</div>
+
+  <div class="filters">
+    <input id="q" placeholder="Spieler suchen …" size="18">
+    <div class="seg" id="posSeg">
+      <button data-v="" class="on">Alle</button><button data-v="GKP">TW</button><button data-v="DEF">VER</button><button data-v="MID">MIT</button><button data-v="FWD">STU</button>
+    </div>
+    <select id="team"><option value="">Alle Klubs</option></select>
+    <select id="avail">
+      <option value="">Alle Spieler</option>
+      <option value="free">Nur frei (Waiver)</option>
+      <option value="mine">Nur mein Team</option>
+      <option value="owned">Nur vergeben</option>
+    </select>
+    <label>Min. Minuten <input id="minMin" type="number" value="270" min="0" step="90" style="width:80px"></label>
+    <label>Prognose für <select id="horizon"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> Runden</label>
+    <label><input type="checkbox" id="fitOnly"> nur fit</label>
+  </div>
+
+  <div class="grid2">
+    <div class="card cmp" id="cmpCard">
+      <h2>Vergleich <span>Haken in der Tabelle setzen (max. 4)</span></h2>
+      <div id="cmp" class="empty">Noch keine Spieler ausgewählt.</div>
+    </div>
+    <div class="card">
+      <h2>Waiver-Tipps <span>freie Spieler mit besserer Prognose als deine</span></h2>
+      <div id="tips" class="empty">Liga laden und oben auswählen, wer du bist.</div>
+    </div>
+  </div>
+
+  <details class="card" id="scoringCard" style="margin-bottom:12px">
+    <summary>Punkteregeln (an deine Sleeper-Liga anpassen)</summary>
+    <div class="scoring" id="scoring"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ghost" id="resetScoring">Standard wiederherstellen</button>
+    </div>
+    <div id="rawScoringWrap" style="display:none;margin-top:10px">
+      <div class="empty">Scoring-Einstellungen aus deiner Sleeper-Liga (zum Abgleichen):</div>
+      <pre class="raw" id="rawScoring"></pre>
+    </div>
+  </details>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="status" id="count"></div>
+</main>
+<footer>Daten: offizielle Fantasy Premier League API (Stats & Spielplan) und Sleeper API (Liga & Kader). Prognose = eigene Punkteregeln × Einsatzminuten × Gegnerstärke – eine Orientierung, keine Garantie.</footer>
+
+<script>
+(() => {
+const POS = {1:'GKP',2:'DEF',3:'MID',4:'FWD'};
+const DEFAULT_SCORING = {
+  goal_GKP:6, goal_DEF:6, goal_MID:5, goal_FWD:4,
+  assist:3,
+  cs_GKP:4, cs_DEF:4, cs_MID:1, cs_FWD:0,
+  gc_GKP:-0.5, gc_DEF:-0.5,
+  save:0.5, pen_save:5, pen_miss:-2,
+  yellow:-1, red:-3, own_goal:-2,
+  start:1, tackle:0, cbi:0, recovery:0
+};
+const LABELS = {
+  goal_GKP:'Tor (TW)', goal_DEF:'Tor (VER)', goal_MID:'Tor (MIT)', goal_FWD:'Tor (STU)',
+  assist:'Assist', cs_GKP:'Zu-Null (TW)', cs_DEF:'Zu-Null (VER)', cs_MID:'Zu-Null (MIT)', cs_FWD:'Zu-Null (STU)',
+  gc_GKP:'Gegentor (TW)', gc_DEF:'Gegentor (VER)', save:'Parade', pen_save:'Penalty gehalten', pen_miss:'Penalty verschossen',
+  yellow:'Gelbe Karte', red:'Rote Karte', own_goal:'Eigentor', start:'Pro Startelf-Einsatz',
+  tackle:'Tackle', cbi:'Klärung/Block/Abfang', recovery:'Ballgewinn'
+};
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem('plscout_'+k)); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem('plscout_'+k, JSON.stringify(v)); } catch(e){} }
+};
+
+let scoring = Object.assign({}, DEFAULT_SCORING, store.get('scoring') || {});
+let players = [], teams = {}, fixturesByTeam = {}, gamesPlayed = 1, nextGw = null;
+let sleeper = { ownerByFpl: {}, users: {}, me: '' };
+const state = { q:'', pos:'', team:'', avail:'', minMin:270, horizon:3, fitOnly:false, sort:'proj', dir:-1, selected:new Set() };
+
+const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+const fmt = (v,d=1) => (v==null||isNaN(v)) ? '–' : v.toFixed(d);
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function setStatus(msg, err){ const s=$('status'); s.textContent=msg; s.className='status'+(err?' err':''); }
+
+async function getJSON(url){
+  const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+  if(!r.ok) throw new Error(url+' → HTTP '+r.status);
+  return r.json();
+}
+
+/* ---------- Punkte ---------- */
+function pointsFrom(p, s, useXG){
+  const pos = p.pos;
+  const goals = useXG ? p.xg : p.goals;
+  const assists = useXG ? p.xa : p.assists;
+  let pts = 0;
+  pts += goals * (s['goal_'+pos]||0);
+  pts += assists * s.assist;
+  pts += p.cs * (s['cs_'+pos]||0);
+  if(pos==='GKP'||pos==='DEF') pts += (useXG ? p.xgc : p.gc) * (s['gc_'+pos]||0);
+  pts += p.saves * s.save + p.penSaved * s.pen_save + p.penMissed * s.pen_miss;
+  pts += p.yellow * s.yellow + p.red * s.red + p.ownGoals * s.own_goal;
+  pts += p.starts * s.start;
+  pts += p.tackles * s.tackle + p.cbi * s.cbi + p.recoveries * s.recovery;
+  return pts;
+}
+function fixtureFactor(d){ return 1 + (3 - d) * 0.1; }
+
+function recompute(){
+  const H = state.horizon;
+  for(const p of players){
+    p.pts = pointsFrom(p, scoring, false);
+    p.xpts = pointsFrom(p, scoring, true);
+    p.pts90 = p.minutes > 0 ? p.pts / p.minutes * 90 : 0;
+    p.xpts90 = p.minutes > 0 ? p.xpts / p.minutes * 90 : 0;
+    // Erwartete Minuten pro Spiel: Saisonschnitt, gedeckelt bei 90, mal Einsatzwahrscheinlichkeit
+    let minsPerGame = Math.min(90, p.minutes / Math.max(1, gamesPlayed));
+    const chance = p.chance == null ? (p.status==='a' ? 1 : (p.status==='d' ? 0.5 : 0)) : p.chance/100;
+    const base = (0.5 * p.pts90 + 0.5 * p.xpts90) * (minsPerGame/90) * chance;
+    const fx = (fixturesByTeam[p.teamId] || []).filter(f => f.gw != null && f.gw < nextGw + H);
+    p.next = fx;
+    p.proj = fx.reduce((sum,f) => sum + base * fixtureFactor(f.d), 0);
+  }
+}
+
+/* ---------- Daten laden ---------- */
+async function loadFPL(){
+  const [boot, fixtures] = await Promise.all([
+    getJSON('/api/fpl/bootstrap-static/'),
+    getJSON('/api/fpl/fixtures/?future=1')
+  ]);
+  teams = {};
+  for(const t of boot.teams) teams[t.id] = { name:t.name, short:t.short_name };
+  const ev = boot.events || [];
+  const next = ev.find(e => e.is_next) || ev.find(e => !e.finished);
+  nextGw = next ? next.id : 39;
+  gamesPlayed = Math.max(1, ev.filter(e => e.finished).length);
+  $('gwinfo').textContent = next ? `Nächster Spieltag: GW ${next.id} · ${gamesPlayed} Spieltage gespielt` : 'Saison beendet';
+
+  fixturesByTeam = {};
+  for(const f of fixtures){
+    if(f.finished || f.event == null) continue;
+    (fixturesByTeam[f.team_h] ||= []).push({ gw:f.event, opp:f.team_a, home:true, d:f.team_h_difficulty });
+    (fixturesByTeam[f.team_a] ||= []).push({ gw:f.event, opp:f.team_h, home:false, d:f.team_a_difficulty });
+  }
+  for(const k in fixturesByTeam) fixturesByTeam[k].sort((a,b)=>a.gw-b.gw);
+
+  players = boot.elements.map(e => ({
+    id:e.id, name:e.web_name, full:`${e.first_name} ${e.second_name}`,
+    teamId:e.team, pos:POS[e.element_type] || 'MID',
+    minutes:num(e.minutes), goals:num(e.goals_scored), assists:num(e.assists),
+    xg:num(e.expected_goals), xa:num(e.expected_assists), xgi:num(e.expected_goal_involvements),
+    cs:num(e.clean_sheets), gc:num(e.goals_conceded), xgc:num(e.expected_goals_conceded),
+    saves:num(e.saves), penSaved:num(e.penalties_saved), penMissed:num(e.penalties_missed),
+    yellow:num(e.yellow_cards), red:num(e.red_cards), ownGoals:num(e.own_goals),
+    starts:num(e.starts), tackles:num(e.tackles), cbi:num(e.clearances_blocks_interceptions), recoveries:num(e.recoveries),
+    form:num(e.form), fplPts:num(e.total_points), sel:num(e.selected_by_percent),
+    status:e.status, news:e.news || '', chance:e.chance_of_playing_next_round
+  }));
+
+  const tsel = $('team');
+  Object.entries(teams).sort((a,b)=>a[1].name.localeCompare(b[1].name))
+    .forEach(([id,t]) => tsel.insertAdjacentHTML('beforeend', `<option value="${id}">${esc(t.name)}</option>`));
+}
+
+async function loadSleeper(leagueId){
+  setStatus('Lade Sleeper-Liga …');
+  const league = await getJSON(`/api/sleeper/league/${encodeURIComponent(leagueId)}`);
+  if(!league || !league.league_id) throw new Error('Liga nicht gefunden – League-ID prüfen.');
+  const [rosters, users] = await Promise.all([
+    getJSON(`/api/sleeper/league/${leagueId}/rosters`),
+    getJSON(`/api/sleeper/league/${leagueId}/users`)
+  ]);
+  const sport = league.sport || 'nfl';
+  let sp = {};
+  try { sp = await getJSON(`/api/sleeper/players/${encodeURIComponent(sport)}`) || {}; }
+  catch(e){ console.warn('Sleeper-Spielerliste nicht verfügbar', e); }
+
+  sleeper.users = {};
+  for(const u of users||[]) sleeper.users[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name || 'Team';
+
+  // Sleeper-Spieler-ID → Besitzer
+  const ownerBySleeper = {};
+  for(const r of rosters||[]) for(const pid of (r.players||[])) ownerBySleeper[pid] = r.owner_id;
+
+  // Sleeper-Spieler → FPL zuordnen (über Name, mit Klub als Tiebreaker)
+  const byFull = {}, byLast = {};
+  for(const p of players){
+    (byFull[norm(p.full)] ||= []).push(p);
+    (byLast[norm(p.name)] ||= []).push(p);
+  }
+  const teamMatch = (fp, sTeam) => {
+    if(!sTeam) return true;
+    const t = teams[fp.teamId]; const st = norm(sTeam);
+    return norm(t.short)===st || norm(t.name)===st || norm(t.name).includes(st) || st.includes(norm(t.short));
+  };
+  sleeper.ownerByFpl = {};
+  let matched = 0, total = 0;
+  for(const [pid, owner] of Object.entries(ownerBySleeper)){
+    total++;
+    const s = sp[pid];
+    if(!s) continue;
+    const full = norm(s.full_name || `${s.first_name||''} ${s.last_name||''}`);
+    const last = norm(s.last_name || full.split(' ').pop());
+    let cands = byFull[full] || [];
+    if(!cands.length) cands = (byLast[last] || []).concat(byLast[full] || []);
+    if(!cands.length) cands = players.filter(p => norm(p.full).endsWith(' '+last));
+    if(cands.length > 1){ const t = cands.filter(c => teamMatch(c, s.team)); if(t.length) cands = t; }
+    if(cands.length >= 1){ sleeper.ownerByFpl[cands[0].id] = owner; matched++; }
+  }
+
+  // "ich bin"-Auswahl
+  const sel = $('meSel');
+  sel.innerHTML = '<option value="">– ich bin … –</option>' +
+    Object.entries(sleeper.users).map(([id,n]) => `<option value="${id}">${esc(n)}</option>`).join('');
+  const savedMe = store.get('me_'+leagueId);
+  if(savedMe && sleeper.users[savedMe]) { sel.value = savedMe; sleeper.me = savedMe; }
+
+  // Scoring der Liga anzeigen
+  if(league.scoring_settings){
+    $('rawScoring').textContent = JSON.stringify(league.scoring_settings, null, 1);
+    $('rawScoringWrap').style.display = '';
+  }
+  store.set('league', leagueId);
+  const msg = `Liga «${league.name}» geladen (${sport}) · ${matched}/${total} Kaderspieler zugeordnet` +
+    (total && !matched ? ' – Spielerliste von Sleeper nicht verfügbar, Besitzer können nicht angezeigt werden.' : '');
+  setStatus(msg, total && !matched);
+}
+
+/* ---------- Darstellung ---------- */
+const COLS = [
+  {k:'sel', t:'', l:true, nosort:true},
+  {k:'name', t:'Spieler', l:true},
+  {k:'team', t:'Klub', l:true},
+  {k:'pos', t:'Pos', l:true},
+  {k:'owner', t:'Besitzer', l:true},
+  {k:'minutes', t:'Min'},
+  {k:'goals', t:'T'},
+  {k:'assists', t:'A'},
+  {k:'xg', t:'xG'},
+  {k:'xa', t:'xA'},
+  {k:'cs', t:'ZN'},
+  {k:'saves', t:'Par.'},
+  {k:'form', t:'Form'},
+  {k:'pts', t:'Pkt'},
+  {k:'pts90', t:'Pkt/90'},
+  {k:'xpts90', t:'xPkt/90'},
+  {k:'proj', t:'Prognose'},
+  {k:'fdr', t:'Nächste Gegner', l:true, nosort:true},
+];
+function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
+function ownerLabel(p){
+  if(!Object.keys(sleeper.users).length) return '';
+  const o = ownerOf(p);
+  if(!o) return '<span class="owner free">frei</span>';
+  if(o === sleeper.me) return '<span class="owner me">mein Team</span>';
+  return `<span class="owner">${esc(sleeper.users[o]||'?')}</span>`;
+}
+function sortVal(p,k){
+  if(k==='name') return p.name.toLowerCase();
+  if(k==='team') return teams[p.teamId].short;
+  if(k==='pos') return p.pos;
+  if(k==='owner'){ const o=ownerOf(p); return o ? (sleeper.users[o]||'') : ''; }
+  return p[k];
+}
+function filtered(){
+  const q = norm(state.q);
+  return players.filter(p => {
+    if(state.pos && p.pos!==state.pos) return false;
+    if(state.team && String(p.teamId)!==state.team) return false;
+    if(p.minutes < state.minMin && !state.selected.has(p.id)) return false;
+    if(state.fitOnly && p.status!=='a') return false;
+    if(q && !norm(p.full+' '+p.name).includes(q)) return false;
+    const o = ownerOf(p);
+    if(state.avail==='free' && o) return false;
+    if(state.avail==='owned' && !o) return false;
+    if(state.avail==='mine' && (!o || o!==sleeper.me)) return false;
+    return true;
+  });
+}
+function fdrHtml(p){
+  return '<span class="fdr">' + (p.next||[]).map(f =>
+    `<span class="d${f.d}" title="GW ${f.gw}">${esc(teams[f.opp]?.short||'?')}${f.home?'':' (a)'}</span>`).join('') + '</span>';
+}
+function renderHead(){
+  $('thead').innerHTML = COLS.map(c =>
+    `<th class="${c.l?'l':''} ${state.sort===c.k?'sorted':''}" data-k="${c.k}">${c.t}${state.sort===c.k?(state.dir<0?' ▾':' ▴'):''}</th>`).join('');
+}
+function renderTable(){
+  const rows = filtered().sort((a,b) => {
+    const va = sortVal(a,state.sort), vb = sortVal(b,state.sort);
+    return (va>vb?1:va<vb?-1:0) * state.dir;
+  });
+  const shown = rows.slice(0, 400);
+  $('tbody').innerHTML = shown.map(p => {
+    const o = ownerOf(p);
+    const cls = [state.selected.has(p.id)?'sel':'', (o && o===sleeper.me)?'mine':''].join(' ');
+    const news = p.news ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
+    return `<tr class="${cls}">
+      <td class="l"><input type="checkbox" data-id="${p.id}" ${state.selected.has(p.id)?'checked':''}></td>
+      <td class="l"><span class="pname">${esc(p.name)}</span> ${news}</td>
+      <td class="l">${esc(teams[p.teamId].short)}</td>
+      <td class="l"><span class="pos ${p.pos}">${p.pos}</span></td>
+      <td class="l">${ownerLabel(p)}</td>
+      <td>${p.minutes}</td><td>${p.goals}</td><td>${p.assists}</td>
+      <td>${fmt(p.xg)}</td><td>${fmt(p.xa)}</td><td>${p.cs}</td><td>${p.saves}</td>
+      <td>${fmt(p.form)}</td><td>${fmt(p.pts,0)}</td>
+      <td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.xpts90,2)}</td>
+      <td class="big mono">${fmt(p.proj,1)}</td>
+      <td class="l">${fdrHtml(p)}</td>
+    </tr>`;
+  }).join('');
+  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Prognose = erwartete Punkte in den nächsten ${state.horizon} Runden`;
+}
+function renderCompare(){
+  const sel = players.filter(p => state.selected.has(p.id));
+  if(!sel.length){ $('cmp').className='empty'; $('cmp').innerHTML='Noch keine Spieler ausgewählt.'; return; }
+  $('cmp').className='';
+  const metrics = [
+    ['Prognose','proj',1],['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
+    ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['Form','form',1]
+  ];
+  let h = `<table><thead><tr><th class="l"></th>${sel.map(p=>`<th>${esc(p.name)} <button class="x" data-rm="${p.id}" title="entfernen">✕</button><br><small style="color:var(--muted)">${esc(teams[p.teamId].short)} · ${p.pos}</small></th>`).join('')}</tr></thead><tbody>`;
+  for(const [label,k,d] of metrics){
+    const max = Math.max(...sel.map(p=>p[k]));
+    h += `<tr><td class="l">${label}</td>${sel.map(p=>`<td class="${sel.length>1&&p[k]===max&&max>0?'best':''}">${fmt(p[k],d)}</td>`).join('')}</tr>`;
+  }
+  h += `<tr><td class="l">Gegner</td>${sel.map(p=>`<td>${fdrHtml(p)}</td>`).join('')}</tr>`;
+  $('cmp').innerHTML = h + '</tbody></table>';
+}
+function renderTips(){
+  const el = $('tips');
+  if(!sleeper.me){ el.className='empty'; el.innerHTML = Object.keys(sleeper.users).length ? 'Oben auswählen, wer du bist.' : 'Liga laden und oben auswählen, wer du bist.'; return; }
+  const mine = players.filter(p => ownerOf(p)===sleeper.me);
+  const free = players.filter(p => !ownerOf(p) && p.minutes >= 180);
+  const tips = [];
+  for(const pos of ['GKP','DEF','MID','FWD']){
+    const worst = mine.filter(p=>p.pos===pos).sort((a,b)=>a.proj-b.proj)[0];
+    if(!worst) continue;
+    const best = free.filter(p=>p.pos===pos && p.proj > worst.proj + 0.5).sort((a,b)=>b.proj-a.proj).slice(0,2);
+    for(const b of best) tips.push({pos, out:worst, in:b, gain:b.proj-worst.proj});
+  }
+  tips.sort((a,b)=>b.gain-a.gain);
+  if(!tips.length){ el.className='empty'; el.innerHTML = mine.length ? 'Keine freien Spieler mit klar besserer Prognose gefunden. 👍' : 'Für dein Team wurden keine Spieler zugeordnet.'; return; }
+  el.className='tips';
+  el.innerHTML = '<ul style="margin:0;padding-left:18px">' + tips.slice(0,6).map(t =>
+    `<li><span class="pos ${t.pos}">${t.pos}</span> <b>${esc(t.in.name)}</b> (${esc(teams[t.in.teamId].short)}, ${fmt(t.in.proj)}) für ${esc(t.out.name)} (${fmt(t.out.proj)}) · <b>+${fmt(t.gain)}</b> Pkt</li>`).join('') + '</ul>';
+}
+function renderScoring(){
+  $('scoring').innerHTML = Object.keys(DEFAULT_SCORING).map(k =>
+    `<label>${LABELS[k]}<input type="number" step="0.1" data-sk="${k}" value="${scoring[k]}"></label>`).join('');
+}
+function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); }
+
+/* ---------- Events ---------- */
+$('q').addEventListener('input', e => { state.q = e.target.value; renderTable(); });
+$('posSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  state.pos = b.dataset.v; [...$('posSeg').children].forEach(x => x.classList.toggle('on', x===b)); renderTable();
+});
+$('team').addEventListener('change', e => { state.team = e.target.value; renderTable(); });
+$('avail').addEventListener('change', e => { state.avail = e.target.value; renderTable(); });
+$('minMin').addEventListener('input', e => { state.minMin = num(e.target.value); renderTable(); });
+$('horizon').addEventListener('change', e => { state.horizon = +e.target.value; renderAll(); });
+$('fitOnly').addEventListener('change', e => { state.fitOnly = e.target.checked; renderTable(); });
+$('thead').addEventListener('click', e => {
+  const th = e.target.closest('th'); if(!th) return;
+  const c = COLS.find(c=>c.k===th.dataset.k); if(!c || c.nosort) return;
+  if(state.sort===c.k) state.dir *= -1; else { state.sort=c.k; state.dir = c.l ? 1 : -1; }
+  renderHead(); renderTable();
+});
+$('tbody').addEventListener('change', e => {
+  const id = +e.target.dataset.id; if(!id) return;
+  if(e.target.checked){ if(state.selected.size>=4){ e.target.checked=false; return; } state.selected.add(id); }
+  else state.selected.delete(id);
+  renderTable(); renderCompare();
+});
+$('cmp').addEventListener('click', e => {
+  const id = +e.target.dataset.rm; if(!id) return; state.selected.delete(id); renderTable(); renderCompare();
+});
+$('scoring').addEventListener('input', e => {
+  const k = e.target.dataset.sk; if(!k) return;
+  scoring[k] = num(e.target.value); store.set('scoring', scoring); renderAll();
+});
+$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); renderScoring(); renderAll(); });
+$('meSel').addEventListener('change', e => {
+  sleeper.me = e.target.value; store.set('me_'+$('leagueId').value.trim(), sleeper.me); renderAll();
+});
+async function doLoadLeague(){
+  const id = $('leagueId').value.trim(); if(!id) return;
+  try {
+    await loadSleeper(id);
+    const u = new URL(location.href); u.searchParams.set('league', id); history.replaceState(null,'',u);
+    renderAll();
+  } catch(e){ setStatus('Sleeper: '+e.message, true); }
+}
+$('loadLeague').addEventListener('click', doLoadLeague);
+$('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeague(); });
+
+/* ---------- Start ---------- */
+(async () => {
+  renderScoring();
+  try {
+    await loadFPL();
+    setStatus(`${players.length} Spieler geladen.`);
+    renderAll();
+  } catch(e){
+    setStatus('Spielerdaten konnten nicht geladen werden ('+e.message+'). Die Seite muss über Netlify laufen, damit der API-Proxy funktioniert.', true);
+    return;
+  }
+  const lid = new URLSearchParams(location.search).get('league') || store.get('league');
+  if(lid){ $('leagueId').value = lid; doLoadLeague(); }
+})();
+})();
+</script>
+</body>
+</html>
