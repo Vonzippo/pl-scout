@@ -157,23 +157,23 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 
   <section id="viewCoach" hidden>
     <div class="card coach">
-      <h2>KI-Coach <span>analysiert dein Team, sucht aktuelle News im Web und gibt dir konkrete Tipps</span></h2>
+      <h2>KI-Coach <span>bereitet deine Frage mit Team und Stats vor und öffnet sie in deinem Claude-Chat (läuft über dein Abo)</span></h2>
       <div class="chips" id="chips">
-        <button data-q="Wer ist für den nächsten Spieltag die beste Aufstellung aus meinem Kader? Prüfe aktuelle Verletzungen und voraussichtliche Aufstellungen.">⚽ Beste Aufstellung</button>
+        <button data-q="Wer ist für den nächsten Spieltag die beste Aufstellung aus meinem Kader? Prüfe aktuelle Verletzungen, Sperren und voraussichtliche Aufstellungen.">⚽ Beste Aufstellung</button>
         <button data-q="Welche freien Spieler sollte ich jetzt vom Waiver holen und wen dafür abgeben? Berücksichtige Form, Prognose, Spielplan und aktuelle News.">🔁 Waiver-Tipps</button>
         <button data-q="Mach einen Verletzungs- und News-Check für alle Spieler in meinem Kader. Wer ist fraglich oder fällt aus?">🩺 News-Check Team</button>
-        <button data-q="Wer sind die besten Spieler für den nächsten Spieltag insgesamt (Captain-Kandidaten, Top-Picks pro Position)?">⭐ Top-Picks Spieltag</button>
+        <button data-q="Wer sind die besten Spieler für den nächsten Spieltag insgesamt (Top-Picks pro Position, beste Optionen auf dem Waiver)?">⭐ Top-Picks Spieltag</button>
         <button data-q="Analysiere mein Team: Stärken, Schwächen, Positionen mit Handlungsbedarf, und wie ich im Vergleich zu meinen Mitspielern dastehe.">📊 Team-Analyse</button>
       </div>
-      <div class="chatlog" id="chatlog"><div class="empty">Stell eine Frage oder wähle oben einen Vorschlag. Beispiele: «Soll ich Saka oder Palmer aufstellen?», «Wie geht es Isak aktuell?».</div></div>
-      <div class="composer">
-        <textarea id="chatIn" rows="2" placeholder="Frag deinen Coach …"></textarea>
-        <button class="primary" id="chatSend">Senden</button>
+      <textarea id="chatIn" rows="3" placeholder="Eigene Frage, z. B. «Soll ich Saka oder Palmer aufstellen?» oder «Wie geht es Isak aktuell?»" style="font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical"></textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="primary" id="openWeb">In Claude öffnen</button>
+        <button id="openApp">In Claude-App öffnen</button>
+        <button class="ghost" id="copyPrompt">Prompt kopieren</button>
+        <span class="empty" id="coachMsg"></span>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label class="empty" style="display:flex;gap:6px;align-items:center">Coach-Passwort <input id="coachKey" type="password" size="16" autocomplete="current-password"></label>
-        <button class="ghost" id="chatClear">Chat leeren</button>
-      </div>
+      <details><summary class="empty" style="cursor:pointer">Vorschau des Prompts</summary><pre class="raw" id="promptPreview" style="max-height:320px;white-space:pre-wrap"></pre></details>
+      <div class="empty">Claude öffnet sich mit der vorbereiteten Nachricht – du musst nur noch auf Senden drücken. Für aktuelle News sollte in Claude die Websuche eingeschaltet sein.</div>
     </div>
   </section>
 
@@ -635,145 +635,65 @@ function rosterCard(r){
     </tbody></table></div>`;
 }
 
-/* ---------- KI-Coach ---------- */
-const chat = [];
-let chatBusy = false;
-function compact(p){
-  const nx = (p.next||[]).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'},${f.d})`).join(' ');
-  const o = ownerOf(p);
-  return { n:p.full, kurz:p.name, klub:teams[p.teamId].short, pos:p.pos, min:p.minutes, tore:p.goals, assists:p.assists,
-    xg:+p.xg.toFixed(2), xa:+p.xa.toFixed(2), zn:p.cs, paraden:p.saves, form:p.form, pkt90:+p.pts90.toFixed(2), xpkt90:+p.xpts90.toFixed(2),
-    prognose:+p.proj.toFixed(1), naechste:nx, status:p.status, news:p.news||undefined,
-    besitzer: Object.keys(sleeper.users).length ? (o ? (o===sleeper.me ? 'ICH' : sleeper.users[o]) : 'frei') : undefined };
+/* ---------- KI-Coach (über Claude-Chat) ---------- */
+const MAX_PROMPT = 12000;
+function line(p){
+  const nx = (p.next||[]).slice(0,4).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'}${f.d})`).join(' ');
+  const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+    (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
+    ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}`;
 }
-function buildContext(question){
-  const ctx = {
-    naechsterSpieltag: nextGw, prognoseHorizontRunden: state.horizon,
-    punkteregeln: Object.fromEntries(Object.entries(scoring).filter(([k,v]) => v)),
-    hinweis: 'prognose = erwartete Punkte nach Punkteregeln des Nutzers über den Horizont; naechste = Gegner(H/A, Schwierigkeit 1-5); status a=fit d=fraglich i=verletzt s=gesperrt u=nicht verfügbar'
-  };
-  const byPos = (arr, n) => Object.fromEntries(['GKP','DEF','MID','FWD'].map(pos =>
-    [pos, arr.filter(p=>p.pos===pos).sort((a,b)=>b.proj-a.proj).slice(0,n).map(compact)]));
+function buildPrompt(question){
+  const out = [];
+  out.push(`Ich spiele Fantasy-Fussball in einer Sleeper-Liga (englische Premier League). Heute ist ${new Date().toLocaleDateString('de-CH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}.`);
+  out.push(`\nMEINE FRAGE: ${question}`);
+  out.push(`\nBitte nutze die Websuche für aktuelle Verletzungen, Sperren, Pressekonferenzen und voraussichtliche Aufstellungen, und kombiniere das mit meinen Daten unten. Gib konkrete Empfehlungen mit kurzer Begründung. Empfiehl nur Spieler aus meinem Kader oder freie Spieler. Antworte auf Deutsch (Schweizer Rechtschreibung).`);
+  const rules = Object.entries(scoring).filter(([k,v]) => v).map(([k,v]) => `${LABELS[k]} ${v>0?'+':''}${v}`).join(', ');
+  out.push(`\nMEINE DATEN (Saisonstats aus der offiziellen FPL-API; nächster Spieltag GW ${nextGw}; Progn. = erwartete Punkte nach meinen Regeln in den nächsten ${state.horizon} Runden; Gegner(H/A + Schwierigkeit 1 leicht – 5 schwer); T=Tore, A=Assists, ZN=Zu-Null)`);
+  out.push(`Punkteregeln: ${rules}`);
+  const blocks = [];
   if(sleeper.rosters.length){
     const mine = sleeper.rosters.find(r => r.owner === sleeper.me);
     if(mine){
       const t = teamStats(mine);
-      const rowC = x => x.p ? compact(x.p) : { n:x.name, klub:x.club, pos:x.pos, hinweis:'keine Stats zugeordnet', sleeperStatus:x.injury||undefined };
-      ctx.meinTeam = { name: sleeper.users[mine.owner], bilanz: t.rec, punkte: t.fpts, startelf: t.starters.map(rowC), bank: t.bench.map(rowC) };
-    } else ctx.meinTeam = 'Nutzer hat noch nicht ausgewählt, welches Team ihm gehört.';
-    ctx.besteFreieSpieler = byPos(players.filter(p => !ownerOf(p) && p.minutes >= 90), 8);
-    ctx.mitspieler = sleeper.rosters.filter(r => r.owner !== sleeper.me).map(r => {
+      const l = x => x.p ? '- '+line(x.p) : `- ${x.name} (${x.club}, ${x.pos}) – keine Stats${x.injury?' – '+x.injury:''}`;
+      blocks.push(`\nMEIN TEAM «${sleeper.users[mine.owner]}» (Bilanz ${t.rec}, ${t.fpts.toFixed(1)} Pkt)\nStartelf:\n${t.starters.map(l).join('\n')}\nBank:\n${t.bench.map(l).join('\n')}`);
+    }
+    const free = players.filter(p => !ownerOf(p) && p.minutes >= 90);
+    blocks.push('\nBESTE FREIE SPIELER (Waiver):\n' + ['GKP','DEF','MID','FWD'].map(pos =>
+      free.filter(p=>p.pos===pos).sort((a,b)=>b.proj-a.proj).slice(0, pos==='GKP'?3:5).map(p=>'- '+line(p)).join('\n')).filter(Boolean).join('\n'));
+    blocks.push('\nMITSPIELER:\n' + sleeper.rosters.filter(r => r.owner !== sleeper.me).map(r => {
       const t = teamStats(r);
-      return { name: sleeper.users[r.owner], bilanz: t.rec, punkte: t.fpts, prognoseStartelf: +t.projStart.toFixed(1),
-               startelf: t.starters.map(x => `${x.name} (${x.club}, ${x.pos})`).join(', ') };
-    });
+      return `- ${sleeper.users[r.owner]} (${t.rec}, ${t.fpts.toFixed(1)} Pkt, Progn. Startelf ${t.projStart.toFixed(1)}): ${t.starters.map(x=>x.name).join(', ')}`;
+    }).join('\n'));
   } else {
-    ctx.hinweisLiga = 'Keine Sleeper-Liga geladen – Besitzverhältnisse unbekannt.';
-    ctx.topSpieler = byPos(players.filter(p => p.minutes >= 90), 10);
+    blocks.push('\nTOP-SPIELER NACH PROGNOSE (keine Liga geladen):\n' + ['GKP','DEF','MID','FWD'].map(pos =>
+      players.filter(p=>p.pos===pos && p.minutes>=90).sort((a,b)=>b.proj-a.proj).slice(0,6).map(p=>'- '+line(p)).join('\n')).filter(Boolean).join('\n'));
   }
-  // Spieler, die in der Frage vorkommen, mitgeben
   const q = ' ' + norm(question) + ' ';
   const mentioned = players.filter(p => {
     const w = norm(p.name); const l = norm(p.full).split(' ').pop();
     return (w.length > 3 && q.includes(' '+w+' ')) || (l.length > 3 && q.includes(' '+l+' '));
-  }).sort((a,b)=>b.minutes-a.minutes).slice(0,10);
-  if(mentioned.length) ctx.erwaehnteSpieler = mentioned.map(compact);
-  return ctx;
+  }).sort((a,b)=>b.minutes-a.minutes).slice(0,8);
+  if(mentioned.length) blocks.unshift('\nERWÄHNTE SPIELER:\n' + mentioned.map(p=>'- '+line(p)+(ownerOf(p)?` [Besitzer: ${ownerOf(p)===sleeper.me?'ich':sleeper.users[ownerOf(p)]}]`:(sleeper.rosters.length?' [frei]':''))).join('\n'));
+  let text = out.join('\n');
+  for(const b of blocks){ if(text.length + b.length > MAX_PROMPT) break; text += '\n' + b; }
+  return text;
 }
-function md(src){
-  const inline = t => esc(t)
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  const out = []; let list = null;
-  const close = () => { if(list){ out.push(`</${list}>`); list = null; } };
-  for(const raw of src.split('\n')){
-    const line = raw.trimEnd();
-    let m;
-    if(!line.trim()){ close(); continue; }
-    if((m = line.match(/^#{1,6}\s+(.*)/))){ close(); out.push(`<h4>${inline(m[1])}</h4>`); continue; }
-    if((m = line.match(/^\s*[-*•]\s+(.*)/))){ if(list!=='ul'){ close(); out.push('<ul>'); list='ul'; } out.push(`<li>${inline(m[1])}</li>`); continue; }
-    if((m = line.match(/^\s*\d+[.)]\s+(.*)/))){ if(list!=='ol'){ close(); out.push('<ol>'); list='ol'; } out.push(`<li>${inline(m[1])}</li>`); continue; }
-    close(); out.push(`<p>${inline(line)}</p>`);
-  }
-  close(); return out.join('');
-}
-function renderChat(){
-  const log = $('chatlog');
-  if(!chat.length){ log.innerHTML = '<div class="empty">Stell eine Frage oder wähle oben einen Vorschlag.</div>'; return; }
-  log.innerHTML = chat.map(m => {
-    if(m.role === 'user') return `<div class="msg user">${esc(m.content)}</div>`;
-    const act = m.activity && m.activity.length ? `<div class="activity">${m.activity.map(a=>`<span>${esc(a)}</span>`).join('')}</div>` : '';
-    const src = m.sources && m.sources.length ? `<div class="sources">Quellen: ${m.sources.map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`).join('')}</div>` : '';
-    const body = m.content ? md(m.content) : (m.error ? '' : '<span class="dots">Denkt nach</span>');
-    return `<div class="msg ai ${m.error?'err':''}">${act}${body}${m.error?esc(m.error):''}${src}</div>`;
-  }).join('');
-}
-async function askCoach(question){
-  question = question.trim();
-  if(!question || chatBusy || !players.length) return;
-  chatBusy = true; $('chatSend').disabled = true;
-  chat.push({ role:'user', content: question });
-  const ai = { role:'assistant', content:'', activity:[], sources:[] };
-  chat.push(ai); renderChat();
-  try {
-    const res = await fetch('/api/coach', {
-      method:'POST',
-      headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value },
-      body: JSON.stringify({
-        messages: chat.filter(m => m !== ai && !m.error).map(m => ({ role:m.role, content:m.content })),
-        context: buildContext(question),
-        today: new Date().toLocaleDateString('de-CH', { weekday:'long', year:'numeric', month:'long', day:'numeric' })
-      })
-    });
-    const ct = res.headers.get('content-type') || '';
-    if(!res.ok || !ct.includes('event-stream')){
-      let msg = 'Fehler ' + res.status;
-      try { const j = await res.json(); if(j.error) msg = j.error; } catch(e){}
-      if(res.status === 404) msg = 'Der Coach-Dienst ist auf dieser Seite nicht verfügbar (läuft nur auf Netlify).';
-      throw new Error(msg);
-    }
-    const reader = res.body.getReader(); const dec = new TextDecoder();
-    let buf = '', toolJson = {}, lastRender = 0;
-    const seen = new Set();
-    for(;;){
-      const { value, done } = await reader.read();
-      if(done) break;
-      buf += dec.decode(value, { stream:true });
-      let i;
-      while((i = buf.indexOf('\n\n')) >= 0){
-        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-        const line = chunk.split('\n').find(l => l.startsWith('data:'));
-        if(!line) continue;
-        let ev; try { ev = JSON.parse(line.slice(5)); } catch(e){ continue; }
-        if(ev.type === 'content_block_start' && ev.content_block?.type === 'server_tool_use'){ toolJson[ev.index] = ''; ai.activity.push('🔎 sucht im Web …'); }
-        else if(ev.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta' && ev.index in toolJson){ toolJson[ev.index] += ev.delta.partial_json; }
-        else if(ev.type === 'content_block_stop' && ev.index in toolJson){
-          try { const q = JSON.parse(toolJson[ev.index]).query; ai.activity[ai.activity.length-1] = '🔎 ' + q; } catch(e){}
-          delete toolJson[ev.index];
-        }
-        else if(ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta'){ ai.content += ev.delta.text; }
-        else if(ev.type === 'content_block_delta' && ev.delta?.type === 'citations_delta'){
-          const c = ev.delta.citation; if(c?.url && !seen.has(c.url)){ seen.add(c.url); ai.sources.push({ url:c.url, title:c.title }); }
-        }
-        else if(ev.type === 'message_delta' && ev.delta?.stop_reason === 'max_tokens'){ ai.content += '\n\n*(Antwort wurde gekürzt.)*'; }
-        else if(ev.type === 'error'){ throw new Error(ev.error?.message || 'Fehler beim Streamen'); }
-      }
-      const now = Date.now(); if(now - lastRender > 80){ renderChat(); lastRender = now; }
-    }
-    if(!ai.content) ai.content = '_(Keine Antwort erhalten – bitte nochmals versuchen.)_';
-  } catch(e){
-    ai.error = e.message;
-  } finally {
-    chatBusy = false; $('chatSend').disabled = false; renderChat();
-  }
+function currentQuestion(){ return $('chatIn').value.trim() || 'Gib mir eine Einschätzung meines Teams für den nächsten Spieltag.'; }
+function refreshPreview(){ if(players.length) $('promptPreview').textContent = buildPrompt(currentQuestion()); }
+function coachMsg(t){ $('coachMsg').textContent = t; if(t) setTimeout(() => { if($('coachMsg').textContent === t) $('coachMsg').textContent = ''; }, 4000); }
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); return true; }
+  catch(e){ const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch(_){} ta.remove(); return ok; }
 }
 
 function renderScoring(){
   $('scoring').innerHTML = Object.keys(DEFAULT_SCORING).map(k =>
     `<label>${LABELS[k]}<input type="number" step="0.1" data-sk="${k}" value="${scoring[k]}"></label>`).join('');
 }
-function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); }
+function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); refreshPreview(); }
 
 /* ---------- Events ---------- */
 $('q').addEventListener('input', e => { state.q = e.target.value; renderTable(); });
@@ -818,12 +738,11 @@ async function doLoadLeague(){
   } catch(e){ setStatus('Sleeper: '+e.message, true); }
 }
 $('loadLeague').addEventListener('click', doLoadLeague);
-$('coachKey').value = store.get('coachKey') || '';
-$('coachKey').addEventListener('change', e => store.set('coachKey', e.target.value));
-$('chatSend').addEventListener('click', () => { const v = $('chatIn').value; $('chatIn').value = ''; askCoach(v); });
-$('chatIn').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('chatSend').click(); } });
-$('chips').addEventListener('click', e => { const b = e.target.closest('button'); if(b) askCoach(b.dataset.q); });
-$('chatClear').addEventListener('click', () => { if(!chatBusy){ chat.length = 0; renderChat(); } });
+$('chips').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; $('chatIn').value = b.dataset.q; refreshPreview(); });
+$('chatIn').addEventListener('input', refreshPreview);
+$('openWeb').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); window.open('https://claude.ai/new?q=' + encodeURIComponent(t), '_blank', 'noopener'); });
+$('openApp').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); location.href = 'claude://claude.ai/new?q=' + encodeURIComponent(t); });
+$('copyPrompt').addEventListener('click', async () => { coachMsg(await copyText(buildPrompt(currentQuestion())) ? 'Kopiert – in Claude einfügen.' : 'Kopieren nicht möglich – Vorschau unten markieren.'); });
 $('tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if(!b) return;
   view = b.dataset.tab; [...$('tabs').children].forEach(x => x.classList.toggle('on', x===b));
