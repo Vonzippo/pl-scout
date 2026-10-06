@@ -433,8 +433,8 @@ async function loadSleeper(leagueId){
   const sel = $('meSel');
   sel.innerHTML = '<option value="">– ich bin … –</option>' +
     Object.entries(sleeper.users).map(([id,n]) => `<option value="${id}">${esc(n)}</option>`).join('');
-  const savedMe = store.get('me_'+leagueId);
-  if(savedMe && sleeper.users[savedMe]) { sel.value = savedMe; sleeper.me = savedMe; }
+  const savedMe = new URLSearchParams(location.search).get('me') || store.get('me_'+leagueId) || store.get('me');
+  if(savedMe && sleeper.users[savedMe]) { sel.value = savedMe; sleeper.me = savedMe; teamA = savedMe; store.set('me_'+leagueId, savedMe); store.set('me', savedMe); }
 
   // Scoring der Liga anzeigen
   if(league.scoring_settings){
@@ -646,6 +646,7 @@ function rosterCard(r){
 
 /* ---------- KI-Coach (über Claude-Chat) ---------- */
 const MAX_PROMPT = 12000;
+const DEFAULT_LEAGUE = '1393632953241735168';
 function line(p){
   const nx = (p.next||[]).slice(0,4).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'}${f.d})`).join(' ');
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
@@ -796,13 +797,17 @@ $('scoring').addEventListener('input', e => {
 });
 $('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); renderScoring(); renderAll(); });
 $('meSel').addEventListener('change', e => {
-  sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); renderAll();
+  sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); store.set('me', sleeper.me);
+  const u = new URL(location.href); if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me'); history.replaceState(null,'',u);
+  renderAll();
 });
 async function doLoadLeague(){
   const id = $('leagueId').value.trim(); if(!id) return;
   try {
     await loadSleeper(id);
-    const u = new URL(location.href); u.searchParams.set('league', id); history.replaceState(null,'',u);
+    const u = new URL(location.href); u.searchParams.set('league', id);
+    if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me');
+    history.replaceState(null,'',u);
     renderAll();
   } catch(e){ setStatus('Sleeper: '+e.message, true); }
 }
@@ -846,7 +851,7 @@ $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeagu
     setStatus('Spielerdaten konnten nicht geladen werden ('+e.message+'). Die Seite muss über Netlify laufen, damit der API-Proxy funktioniert.', true);
     return;
   }
-  const lid = new URLSearchParams(location.search).get('league') || store.get('league');
+  const lid = new URLSearchParams(location.search).get('league') || store.get('league') || DEFAULT_LEAGUE;
   if(lid){ $('leagueId').value = lid; doLoadLeague(); }
 })();
 })();
