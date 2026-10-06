@@ -722,12 +722,35 @@ function renderChat(){
   const log = $('chatlog');
   log.innerHTML = chat.map(m => {
     if(m.role === 'user') return `<div class="msg user">${esc(m.shown || m.content)}</div>`;
-    if(m.pending) return `<div class="msg ai"><span class="dots">Analysiert Daten und sucht aktuelle News</span></div>`;
+    if(m.pending) return `<div class="msg ai"><span class="dots">Liest aktuelle News, analysiert Daten</span></div>`;
     const act = m.queries && m.queries.length ? `<div class="activity">${m.queries.map(q=>`<span>🔎 ${esc(q)}</span>`).join('')}</div>` : '';
     const src = m.sources && m.sources.length ? `<div class="sources">Quellen: ${m.sources.map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`).join('')}</div>` : '';
-    return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content)}${src}</div>`;
+    const nws = m.news && m.news.length ? `<details class="sources"><summary style="cursor:pointer">📰 ${m.news.length} aktuelle Schlagzeilen gelesen</summary><ul style="margin:6px 0;padding-left:18px">${m.news.map(n=>`<li>${esc(n.date)} · <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span>(${esc(n.source)})</span></li>`).join('')}</ul></details>` : '';
+    return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content)}${nws}${src}</div>`;
   }).join('');
   log.lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function mentionedPlayers(question){
+  const q = ' ' + norm(question) + ' ';
+  return players.filter(p => {
+    const w = norm(p.name); const l = norm(p.full).split(' ').pop();
+    return (w.length > 3 && q.includes(' '+w+' ')) || (l.length > 3 && q.includes(' '+l+' '));
+  }).sort((a,b)=>b.minutes-a.minutes).slice(0,8);
+}
+function newsNames(question){
+  const names = mentionedPlayers(question).map(p => p.full);
+  const mine = sleeper.rosters.find(r => r.owner === sleeper.me);
+  if(mine){
+    const t = teamStats(mine);
+    for(const x of [...t.starters, ...t.bench]) names.push(x.p ? x.p.full : x.name);
+  } else {
+    // ohne eigenes Team: die Top-Spieler nach Prognose
+    players.filter(p=>p.minutes>=180).sort((a,b)=>b.proj-a.proj).slice(0,12).forEach(p => names.push(p.full));
+  }
+  if(/waiver|frei|holen|transfer/i.test(question)){
+    players.filter(p => !ownerOf(p) && p.minutes >= 180).sort((a,b)=>b.proj-a.proj).slice(0,5).forEach(p => names.push(p.full));
+  }
+  return [...new Set(names)].slice(0, 20);
 }
 async function askCoach(){
   const question = $('chatIn').value.trim();
@@ -741,12 +764,12 @@ async function askCoach(){
     const history = chat.filter(m => m !== ai && !m.error && !m.pending);
     // nur die letzte Nutzerfrage mit vollem Datenblock schicken, ältere gekürzt
     const msgs = history.map((m,i) => ({ role:m.role, content: (m.role==='user' && i < history.length-1) ? (m.shown||m.content) : m.content }));
-    const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs }) });
+    const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs, news: newsNames(question) }) });
     let j = null; try { j = await res.json(); } catch(e){}
     if(res.status === 401){ $('coachKey').classList.add('need'); $('coachKey').focus(); throw new Error('Bitte unten einmal das Coach-Passwort eingeben und nochmals «Coach fragen» klicken. Die Seite merkt es sich danach.'); }
     if(!res.ok || !j) throw new Error((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status));
     ai.content = j.answer + (j.truncated ? '\n\n*(Antwort wurde gekürzt.)*' : '');
-    ai.sources = j.sources || []; ai.queries = j.queries || [];
+    ai.sources = j.sources || []; ai.queries = j.queries || []; ai.news = j.news || [];
   } catch(e){
     ai.error = e.message;
   } finally {

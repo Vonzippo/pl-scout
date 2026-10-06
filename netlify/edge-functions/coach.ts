@@ -28,6 +28,45 @@ HEUTE IST ${today}. Es läuft die Premier-League-Saison ${season}.
 - Erfinde keine Statistiken; sag ehrlich, wenn etwas unsicher ist.
 - Antworte auf Deutsch in Schweizer Rechtschreibung (kein ß), kompakt, mit kurzen Abschnitten oder Listen in Markdown. Kein Vorwort.`;
 
+// ---------- News: aktuelle Schlagzeilen über Google News RSS ----------
+type NewsItem = { player: string; title: string; source: string; date: string; ts: number; url: string };
+const decode = (t: string) => t
+  .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+  .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/<[^>]+>/g, "").trim();
+const tag = (xml: string, name: string) => { const m = xml.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`)); return m ? decode(m[1]) : ""; };
+
+async function newsFor(player: string): Promise<NewsItem[]> {
+  const q = encodeURIComponent(`"${player}" (injury OR fitness OR "team news" OR lineup OR Premier League) when:7d`);
+  try {
+    const r = await fetch(`https://news.google.com/rss/search?q=${q}&hl=en-GB&gl=GB&ceid=GB:en`, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; PLScout/1.0)" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) return [];
+    const xml = await r.text();
+    const lastName = player.split(" ").pop()!.toLowerCase();
+    return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => {
+      const it = m[1];
+      const source = tag(it, "source");
+      let title = tag(it, "title");
+      if (source && title.endsWith(" - " + source)) title = title.slice(0, -(source.length + 3));
+      const ts = Date.parse(tag(it, "pubDate")) || 0;
+      return { player, title, source, ts, url: tag(it, "link"),
+        date: ts ? new Date(ts).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" }) : "" };
+    }).filter((n) => n.title && n.title.toLowerCase().includes(lastName))
+      .sort((a, b) => b.ts - a.ts).slice(0, 3);
+  } catch { return []; }
+}
+
+async function gatherNews(names: unknown): Promise<NewsItem[]> {
+  const list = (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && n.trim()).map((n) => n.trim().slice(0, 60));
+  const unique = [...new Set(list)].slice(0, 20);
+  const all = (await Promise.all(unique.map(newsFor))).flat();
+  const seen = new Set<string>();
+  return all.filter((n) => { const k = n.title.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
 export default async (req: Request) => {
   if (req.method !== "POST") return json(405, { error: "Nur POST erlaubt." });
 
@@ -39,7 +78,7 @@ export default async (req: Request) => {
     return json(401, { error: "Falsches oder fehlendes Coach-Passwort." });
   }
 
-  let body: { messages?: { role: string; content: string }[] };
+  let body: { messages?: { role: string; content: string }[]; news?: unknown };
   try { body = await req.json(); } catch { return json(400, { error: "Ungültige Anfrage." }); }
 
   const messages = (body.messages || [])
@@ -53,12 +92,19 @@ export default async (req: Request) => {
   const y = now.getUTCFullYear(), startYear = now.getUTCMonth() >= 6 ? y : y - 1;
   const season = `${startYear}/${String(startYear + 1).slice(-2)}`;
 
+  const news = await gatherNews(body.news);
+  const newsBlock = news.length
+    ? `\n\nAKTUELLE SCHLAGZEILEN (Google News, letzte 7 Tage, neueste zuerst – vom System soeben abgerufen):\n` +
+      news.map((n) => `- [${n.player}] ${n.date}: ${n.title} (${n.source})`).join("\n") +
+      `\n\nWerte diese Schlagzeilen zuerst aus (Verletzungen, Sperren, Rotation, Transfers) und beziehe dich mit Datum darauf. Nutze die Websuche, um wichtige Meldungen im Detail zu lesen oder Lücken zu füllen.`
+    : "";
+
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b",
-      messages: [{ role: "system", content: systemPrompt(today, season) }, ...messages],
+      messages: [{ role: "system", content: systemPrompt(today, season) + newsBlock }, ...messages],
       tools: [{ type: "browser_search" }],
       tool_choice: "auto",
       reasoning_effort: "medium",
@@ -93,7 +139,11 @@ export default async (req: Request) => {
     }
   }
 
-  return json(200, { answer: answer || "(Keine Antwort erhalten – bitte nochmals versuchen.)", sources, queries, truncated: data?.choices?.[0]?.finish_reason === "length" });
+  return json(200, {
+    answer: answer || "(Keine Antwort erhalten – bitte nochmals versuchen.)", sources, queries,
+    news: news.map(({ player, title, source, date, url }) => ({ player, title, source, date, url })),
+    truncated: data?.choices?.[0]?.finish_reason === "length",
+  });
 };
 
 export const config = { path: "/api/coach" };
