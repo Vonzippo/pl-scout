@@ -308,10 +308,17 @@ const fmt = (v,d=1) => (v==null||isNaN(v)) ? '–' : v.toFixed(d);
 const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function setStatus(msg, err){ const s=$('status'); s.textContent=msg; s.className='status'+(err?' err':''); }
 
-async function getJSON(url){
-  const r = await fetch(url, { headers: { 'Accept':'application/json' } });
-  if(!r.ok) throw new Error(url+' → HTTP '+r.status);
-  return r.json();
+async function getJSON(url, tries = 3){
+  for(let i = 0; ; i++){
+    try {
+      const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+      if(!r.ok) throw new Error(url+' → HTTP '+r.status);
+      return await r.json();
+    } catch(e){
+      if(i >= tries - 1) throw e;
+      await new Promise(res => setTimeout(res, 800 * (i + 1)));
+    }
+  }
 }
 
 /* ---------- Punkte ---------- */
