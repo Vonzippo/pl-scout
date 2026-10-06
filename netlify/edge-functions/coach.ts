@@ -99,11 +99,11 @@ export default async (req: Request) => {
       `\n\nWerte diese Schlagzeilen zuerst aus (Verletzungen, Sperren, Rotation, Transfers) und beziehe dich mit Datum darauf. Nutze die Websuche, um wichtige Meldungen im Detail zu lesen oder Lücken zu füllen.`
     : "";
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const call = (model: string) => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b",
+      model,
       messages: [{ role: "system", content: systemPrompt(today, season) + newsBlock }, ...messages],
       tools: [{ type: "browser_search" }],
       tool_choice: "auto",
@@ -112,12 +112,16 @@ export default async (req: Request) => {
       max_completion_tokens: 4096,
     }),
   });
+  // Bei Tageslimit auf das kleinere Modell (eigenes Kontingent) ausweichen
+  let usedModel = Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b";
+  let res = await call(usedModel);
+  if (res.status === 429 && usedModel !== "openai/gpt-oss-20b") { usedModel = "openai/gpt-oss-20b"; res = await call(usedModel); }
 
   let data: any = null;
   try { data = await res.json(); } catch { /* leer */ }
   if (!res.ok) {
     const msg = data?.error?.message || `HTTP ${res.status}`;
-    return json(res.status === 429 ? 429 : 502, { error: res.status === 429 ? "Groq-Limit erreicht – bitte kurz warten." : `Groq Fehler: ${msg}` });
+    return json(res.status === 429 ? 429 : 502, { error: res.status === 429 ? `Groq-Limit erreicht (${/per day|TPD|RPD/.test(msg) ? "Tageskontingent aufgebraucht – morgen wieder verfügbar, oder «In Claude öffnen» nutzen" : "bitte 1 Minute warten"}).` : `Groq Fehler: ${msg}` });
   }
 
   const msg = data?.choices?.[0]?.message || {};
@@ -143,6 +147,7 @@ export default async (req: Request) => {
     answer: answer || "(Keine Antwort erhalten – bitte nochmals versuchen.)", sources, queries,
     news: news.map(({ player, title, source, date, url }) => ({ player, title, source, date, url })),
     truncated: data?.choices?.[0]?.finish_reason === "length",
+    model: usedModel,
   });
 };
 

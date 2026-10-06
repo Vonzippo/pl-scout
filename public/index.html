@@ -379,7 +379,7 @@ function computeXfp(){
     const m = k => pool.length ? pool.reduce((t,p)=>t+p[k],0) / pool.reduce((t,p)=>t+p.minutes,0) * 90 : 0;
     pm[pos] = { xg:m('xg'), xa:m('xa'), saves:m('saves'), yellow:m('yellow'), tackles:m('tackles'), cbi:m('cbi'), rec:m('recoveries') };
   }
-  const per90 = (p, k, mk) => { const w = p.minutes / (p.minutes + 360); return (p.minutes ? p[k] / p.minutes * 90 : 0) * w + pm[p.pos][mk] * (1 - w); };
+  const per90 = (p, k, mk) => { const w = p.minutes / (p.minutes + 180); return (p.minutes ? p[k] / p.minutes * 90 : 0) * w + pm[p.pos][mk] * (1 - w); };
   for(const p of players){
     // Einsatz-Wahrscheinlichkeiten aus den letzten Spielen
     const avail = newsValue(p);
@@ -437,8 +437,13 @@ function computeXfp(){
       out[i] = pts;
     }
     out.sort((a,b)=>a-b);
-    p.xfp = out.reduce((a,b)=>a+b,0) / N;
-    p.floor = out[Math.floor(N * 0.15)]; p.ceil = out[Math.floor(N * 0.85)];
+    const model = out.reduce((a,b)=>a+b,0) / N;
+    // 15 % aktuelle Form (Punkte pro Spiel der letzten Spiele, nach Verfügbarkeit gewichtet)
+    const formPart = (p.l10 || 0) * Math.min(1, (p.xMin || 0) / Math.max(30, p.minL5 || 90));
+    p.xfp = 0.85 * model + 0.15 * formPart;
+    const shift = p.xfp - model;
+    p.floor = out[Math.floor(N * 0.15)] + shift; p.ceil = out[Math.floor(N * 0.85)] + shift;
+    p.proj += shift * nextM.length / Math.max(1, nextM.length);
   }
 }
 

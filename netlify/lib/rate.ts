@@ -39,7 +39,9 @@ export function todayAndSeason() {
   return { today, season: `${start}/${String(start + 1).slice(-2)}` };
 }
 
-export async function rateBatch(infos: Info[], apiKey: string, model = "openai/gpt-oss-120b"): Promise<Record<number, Rating>> {
+export async function rateBatch(infos: Info[], apiKey: string, model?: string): Promise<Record<number, Rating>> {
+  // eigenes Kontingent: kleineres Modell zuerst, bei Limit das nächste
+  const models = model ? [model] : ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3-32b"];
   const { today, season } = todayAndSeason();
   const news = await Promise.all(infos.map((i) => headlinesFor(i.name)));
   const blocks = infos.map((i, k) => {
@@ -55,21 +57,27 @@ Bewerte JEDEN Spieler einzeln mit einem KI-Rating von 0 bis 100 für die nächst
 - "t": ein Satz Begründung auf Deutsch (Schweizer Rechtschreibung, kein ß), max. 140 Zeichen, nenne die wichtigste News mit Datum, falls vorhanden.
 Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"..."}]}`;
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(22000),
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: system }, { role: "user", content: blocks }],
-      reasoning_effort: "low",
-      temperature: 0.3,
-      max_completion_tokens: 3500,
-    }),
-  });
-  const data: any = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${data?.error?.message || ""}`);
-  const text = String(data?.choices?.[0]?.message?.content || "");
+  let data: any = null, lastErr = "";
+  for (const m of models) {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(22000),
+      body: JSON.stringify({
+        model: m,
+        messages: [{ role: "system", content: system }, { role: "user", content: blocks }],
+        ...(m.startsWith("openai/") ? { reasoning_effort: "low" } : {}),
+        temperature: 0.3,
+        max_completion_tokens: 3500,
+      }),
+    });
+    const d: any = await res.json().catch(() => null);
+    if (res.ok) { data = d; break; }
+    lastErr = `Groq ${res.status} (${m}): ${d?.error?.message || ""}`.slice(0, 300);
+    if (res.status !== 429 && res.status !== 404 && res.status !== 400) break;
+  }
+  if (!data) throw new Error(lastErr || "Groq nicht erreichbar");
+  const text = String(data?.choices?.[0]?.message?.content || "").replace(/<think>[\s\S]*?<\/think>/g, "");
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error("Keine JSON-Antwort von der KI");
   const parsed = JSON.parse(m[0]);
