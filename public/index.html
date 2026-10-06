@@ -133,6 +133,10 @@ input.need{border-color:var(--warn);outline:2px solid var(--warn)}
 .spark{display:inline-flex;gap:2px;align-items:flex-end;height:18px;vertical-align:middle}
 .spark i{display:block;width:5px;background:var(--accent2);border-radius:1px;min-height:1px}
 .spark i.neg{background:var(--bad)}.spark i.zero{background:var(--line)}
+.sp{font-size:10px;font-weight:800;padding:1px 4px;border-radius:4px;background:#2b2440;color:#c9b6ff;cursor:help}
+.kibar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 10px}
+.kibar button{font-size:12px;padding:5px 10px}
+.kitext{font-size:12px;color:var(--muted);white-space:normal;max-width:260px;text-align:left}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -231,6 +235,8 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <div class="scoring" id="scoreWeights"></div>
     <details style="margin-top:8px"><summary class="empty" style="cursor:pointer">Wie wird der Score berechnet?</summary>
       <ul class="empty" style="line-height:1.6;margin:6px 0">
+        <li><b>xFP:</b> erwartete Punkte im nächsten Spiel nach deinen Regeln – aus erwarteter Spielzeit, Tor-/Assist-Raten (xG/xA, inkl. Elfmeter-, Freistoss- und Eckball-Rolle), Stärke beider Teams (eigenes Torerwartungs-Modell), Heim/Auswärts, Zu-Null-Chance, Paraden und Karten.</li>
+        <li><b>KI-Bewertung:</b> ein Bot liest täglich die Schlagzeilen zu jedem relevanten Spieler und vergibt 0–100 mit kurzer Begründung. Spieler ohne KI-Bewertung werden ohne diesen Baustein berechnet.</li>
         <li><b>Form:</b> Punkte pro Spiel nach deinen Regeln in den letzten 10 Spielen, neuere Spiele zählen stärker.</li>
         <li><b>Effizienz:</b> Punkte pro 90 Minuten über die Saison; bei wenig Einsatzzeit zum Positions-Schnitt hin geglättet (kein Glückstreffer-Bonus).</li>
         <li><b>Einsatzzeit:</b> Minuten-Schnitt der letzten 5 Spiele (70%) und Startelf-Quote der letzten 10 (30%).</li>
@@ -250,6 +256,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     </div>
   </details>
 
+  <div class="kibar"><span id="kiStatus">🤖 KI-Bot: lädt …</span><button class="ghost" id="kiRun" title="Bewertet die fälligen Spieler sofort (sonst automatisch alle 10 Minuten)">Jetzt bewerten</button></div>
   <div class="legend">PL-Scout-Score: <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine</div>
   <div class="tablewrap">
     <table>
@@ -332,22 +339,114 @@ function recompute(){
     p.xpts = pointsFrom(p, scoring, true);
     p.pts90 = p.minutes > 0 ? p.pts / p.minutes * 90 : 0;
     p.xpts90 = p.minutes > 0 ? p.xpts / p.minutes * 90 : 0;
-    // Erwartete Minuten pro Spiel: Saisonschnitt, gedeckelt bei 90, mal Einsatzwahrscheinlichkeit
-    let minsPerGame = Math.min(90, p.minutes / Math.max(1, gamesPlayed));
-    const chance = p.chance == null ? (p.status==='a' ? 1 : (p.status==='d' ? 0.5 : 0)) : p.chance/100;
-    const base = (0.5 * p.pts90 + 0.5 * p.xpts90) * (minsPerGame/90) * chance;
-    const fx = (fixturesByTeam[p.teamId] || []).filter(f => f.gw != null && f.gw < nextGw + H);
-    p.next = fx;
-    p.proj = fx.reduce((sum,f) => sum + base * fixtureFactor(f.d), 0);
+    p.next = (fixturesByTeam[p.teamId] || []).filter(f => f.gw != null && f.gw < nextGw + H);
   }
+  computeRaw();
+  buildTeamModel();
+  computeXfp();
   computeScores();
 }
 
+/* ---------- xFP-Modell: erwartete Punkte, Floor & Ceiling ---------- */
+// Idee: erwartete Spielzeit × (Tor-/Assist-Rate × Stärke der Partie) + Zu-Null-Chance + Gegentore + Paraden + Karten,
+// alles nach deinen Punkteregeln. Floor/Ceiling aus 400 simulierten Spielen (15. bzw. 85. Perzentil).
+let teamModel = { tm:{}, avg:1.3 };
+function mulberry(seed){ return () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function poisson(l, rnd){ if(l <= 0) return 0; const L = Math.exp(-l); let k = 0, q = 1; do { k++; q *= rnd(); } while(q > L && k < 15); return k - 1; }
+function buildTeamModel(){
+  const tm = {};
+  for(const id in teams) tm[id] = { xg:0, xgc:0, games: Object.values(playedGwByTeam[id] || {}).reduce((a,b)=>a+b,0) };
+  for(const p of players){ const t = tm[p.teamId]; if(!t) continue; t.xg += p.xg; if(p.pos === 'GKP') t.xgc += p.xgc; }
+  const all = Object.values(tm), games = all.reduce((a,t)=>a+t.games,0) || 1;
+  const avg = Math.max(0.9, all.reduce((a,t)=>a+t.xg,0) / games);
+  const K = 5; // Glättung zu Saisonbeginn
+  for(const t of all){ t.att = (t.xg + avg*K) / (t.games + K); t.def = (t.xgc + avg*K) / (t.games + K); }
+  teamModel = { tm, avg };
+}
+function matchSetup(p, f){
+  const { tm, avg } = teamModel; const T = tm[p.teamId], O = tm[f.opp];
+  if(!T || !O) return null;
+  const lamFor = T.att * O.def / avg * (f.home ? 1.1 : 0.9);
+  const lamAg = O.att * T.def / avg * (f.home ? 0.9 : 1.1);
+  return { lamFor, lamAg, k: lamFor / T.att, kAg: lamAg / T.def };
+}
+function computeXfp(){
+  const s = scoring;
+  // Positions-Mittelwerte für geglättete Raten pro 90
+  const pm = {};
+  for(const pos of ['GKP','DEF','MID','FWD']){
+    const pool = players.filter(p => p.pos === pos && p.minutes >= 270);
+    const m = k => pool.length ? pool.reduce((t,p)=>t+p[k],0) / pool.reduce((t,p)=>t+p.minutes,0) * 90 : 0;
+    pm[pos] = { xg:m('xg'), xa:m('xa'), saves:m('saves'), yellow:m('yellow'), tackles:m('tackles'), cbi:m('cbi'), rec:m('recoveries') };
+  }
+  const per90 = (p, k, mk) => { const w = p.minutes / (p.minutes + 360); return (p.minutes ? p[k] / p.minutes * 90 : 0) * w + pm[p.pos][mk] * (1 - w); };
+  for(const p of players){
+    // Einsatz-Wahrscheinlichkeiten aus den letzten Spielen
+    const avail = newsValue(p);
+    let pStart, pSub, mStart = 85, mSub = 20;
+    if(p.log && p.log.length){
+      const L = p.log, L5 = L.slice(-5);
+      const st = g => g.start, ap = g => g.min > 0;
+      pStart = 0.6 * (L5.filter(st).length / L5.length) + 0.4 * (L.filter(st).length / L.length);
+      const app = 0.6 * (L5.filter(ap).length / L5.length) + 0.4 * (L.filter(ap).length / L.length);
+      pSub = Math.max(0, app - pStart);
+      const sm = L.filter(st); if(sm.length) mStart = Math.min(90, sm.reduce((t,g)=>t+g.min,0) / sm.length);
+      const sb = L.filter(g => ap(g) && !st(g)); if(sb.length) mSub = sb.reduce((t,g)=>t+g.min,0) / sb.length;
+    } else {
+      const g = Math.max(1, gamesPlayed); pStart = Math.min(1, p.starts / g); pSub = Math.max(0, Math.min(1, (p.minutes > 0 ? 1 : 0)) - pStart) * 0.5;
+    }
+    pStart *= avail; pSub = Math.min(pSub * avail, 1 - pStart);
+    p.pStart = pStart; p.xMin = pStart * mStart + pSub * mSub;
+    // Raten pro 90 inkl. Standardsituationen
+    let xg90 = per90(p, 'xg', 'xg'), xa90 = per90(p, 'xa', 'xa');
+    p.setPieces = [];
+    if(p.penOrder === 1){ xg90 += 0.06; p.setPieces.push('Elfmeter'); }
+    if(p.fkOrder === 1){ xg90 += 0.02; p.setPieces.push('Freistoss'); }
+    if(p.cornerOrder === 1){ xa90 += 0.04; p.setPieces.push('Ecken'); }
+    const sv90 = p.pos === 'GKP' ? per90(p, 'saves', 'saves') : 0, yc90 = per90(p, 'yellow', 'yellow');
+    const def90 = per90(p, 'tackles', 'tackles') * s.tackle + per90(p, 'cbi', 'cbi') * s.cbi + per90(p, 'recoveries', 'rec') * s.recovery;
+    const G = s['goal_'+p.pos] || 0, CS = s['cs_'+p.pos] || 0, GC = s['gc_'+p.pos] || 0;
+    const fxAll = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw && f.gw < nextGw + state.horizon);
+    const models = fxAll.map(f => ({ f, m: matchSetup(p, f) })).filter(x => x.m);
+    const expPts = m => {
+      const e90 = p.xMin / 90;
+      return pStart * s.start + e90 * (xg90 * m.k * G + xa90 * m.k * s.assist + sv90 * m.kAg * s.save + yc90 * s.yellow + def90)
+        + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-m.lamAg) * CS + e90 * m.lamAg * GC;
+    };
+    p.proj = models.reduce((t,x) => t + expPts(x.m), 0);
+    // Simulation nächster Spieltag
+    const nextM = models.filter(x => x.f.gw === nextGw);
+    if(!nextM.length){ p.xfp = 0; p.floor = 0; p.ceil = 0; continue; }
+    const rnd = mulberry(p.id * 7919 + nextGw), N = 400, out = new Array(N);
+    for(let i = 0; i < N; i++){
+      let pts = 0;
+      for(const { m } of nextM){
+        const r = rnd(); let min = 0, started = 0;
+        if(r < pStart){ min = mStart; started = 1; } else if(r < pStart + pSub) min = mSub;
+        if(!min) continue;
+        const f90 = min / 90;
+        pts += started * s.start;
+        pts += poisson(xg90 * m.k * f90, rnd) * G + poisson(xa90 * m.k * f90, rnd) * s.assist;
+        const teamGa = poisson(m.lamAg, rnd);
+        if(teamGa === 0 && min >= 60) pts += CS;
+        if(GC){ let ga = 0; for(let j = 0; j < teamGa; j++) if(rnd() < f90) ga++; pts += ga * GC; }
+        if(sv90) pts += poisson(sv90 * m.kAg * f90, rnd) * s.save;
+        if(rnd() < yc90 * f90) pts += s.yellow;
+        pts += def90 * f90;
+      }
+      out[i] = pts;
+    }
+    out.sort((a,b)=>a-b);
+    p.xfp = out.reduce((a,b)=>a+b,0) / N;
+    p.floor = out[Math.floor(N * 0.15)]; p.ceil = out[Math.floor(N * 0.85)];
+  }
+}
+
 /* ---------- PL-Scout-Score ---------- */
-const SCORE_DEFAULT = { form:25, eff:20, min:15, news:15, fix:10, xs:10, trend:5 };
-const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Einsatzzeit aktuell', news:'News & Fitness', fix:'Gegner (nächste 3)', xs:'Expected (xG/xA-basiert)', trend:'Trend (letzte 3 vs. 10)' };
-const SCORE_SHORT = { form:'Form', eff:'Effizienz', min:'Minuten', news:'News', fix:'Gegner', xs:'Expected', trend:'Trend' };
-let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW') || {});
+const SCORE_DEFAULT = { xfp:20, form:18, ki:12, eff:12, min:12, news:10, xs:8, fix:4, trend:4 };
+const SCORE_LABELS = { xfp:'xFP (erwartete Punkte nächstes Spiel)', ki:'KI-Bewertung (News-Bot)', form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Einsatzzeit aktuell', news:'News & Fitness', fix:'Gegner (nächste 3)', xs:'Expected (xG/xA-basiert)', trend:'Trend (letzte 3 vs. 10)' };
+const SCORE_SHORT = { xfp:'xFP', ki:'KI', form:'Form', eff:'Effizienz', min:'Minuten', news:'News', fix:'Gegner', xs:'Expected', trend:'Trend' };
+let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW2') || {});
 const N_FORM = 10;
 
 function liveToP(pos, st){
@@ -395,8 +494,7 @@ function newsValue(p){
   if(sl){ const s = sl.toLowerCase(); if(s === 'out' || s === 'ir' || s === 'sus') v = Math.min(v, 0); else if(s.startsWith('quest') || s === 'doubtful') v = Math.min(v, s==='doubtful'?0.25:0.5); }
   return v;
 }
-function computeScores(){
-  // 1) Rohwerte
+function computeRaw(){
   for(const p of players){
     const log = gameLog(p);
     const r = p.raw = {};
@@ -423,7 +521,9 @@ function computeScores(){
     const nx = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw).slice(0, 3);
     r.fix = nx.length ? clamp01((5 - nx.reduce((t,f)=>t+f.d,0)/nx.length) / 3) : 0.3;
   }
-  // 2) Positions-Vergleich: Effizienz mit Minuten-Glättung, Perzentile je Position
+}
+function computeScores(){
+  // Positions-Vergleich: Effizienz mit Minuten-Glättung, Perzentile je Position
   for(const pos of ['GKP','DEF','MID','FWD']){
     const grp = players.filter(p => p.pos === pos);
     const pool = grp.filter(p => p.minutes >= 180);
@@ -435,11 +535,13 @@ function computeScores(){
       p.raw.xs = p.xpts90 * w + mx90 * (1 - w);
     }
     const sorted = k => pool.map(p => p.raw[k]).sort((a,b)=>a-b);
-    const S = { form:sorted('form'), eff:sorted('eff'), xs:sorted('xs'), trend:sorted('trend') };
+    for(const p of grp) p.raw.xfp = p.xfp || 0;
+    const S = { form:sorted('form'), eff:sorted('eff'), xs:sorted('xs'), trend:sorted('trend'), xfp:sorted('xfp') };
     for(const p of grp){
       p.comp = {
         form: pctRank(S.form, p.raw.form), eff: pctRank(S.eff, p.raw.eff), xs: pctRank(S.xs, p.raw.xs),
-        trend: pctRank(S.trend, p.raw.trend), min: p.raw.min, news: p.raw.news, fix: p.raw.fix
+        trend: pctRank(S.trend, p.raw.trend), min: p.raw.min, news: p.raw.news, fix: p.raw.fix,
+        xfp: pctRank(S.xfp, p.raw.xfp), ki: kiOf(p) ? kiOf(p).r / 100 : null
       };
       // wer kaum spielt, bekommt bei Form/Trend keinen Bonus
       if(p.minL5 < 20){ p.comp.form *= 0.5; p.comp.trend = Math.min(p.comp.trend, 0.5); }
@@ -447,13 +549,70 @@ function computeScores(){
   }
   // 3) Gewichtete Summe + Verfügbarkeits-Abschlag
   const W = Object.entries(scoreW).filter(([k,v]) => v > 0);
-  const wsum = W.reduce((t,[,v])=>t+v,0) || 1;
   for(const p of players){
-    let sc = W.reduce((t,[k,v]) => t + v * (p.comp[k] ?? 0), 0) / wsum * 100;
+    const Wp = W.filter(([k]) => p.comp[k] != null); // ohne KI-Bewertung: Baustein auslassen
+    const ws = Wp.reduce((t,[,v])=>t+v,0) || 1;
+    let sc = Wp.reduce((t,[k,v]) => t + v * p.comp[k], 0) / ws * 100;
     if(p.comp.news === 0) sc *= 0.35; else if(p.comp.news < 0.5) sc *= 0.75;
     p.score = Math.round(sc);
   }
 }
+/* ---------- KI-Bot ---------- */
+let kiData = { ratings:{}, meta:{} };
+const KI_MAX_AGE = 48 * 3600e3;
+function kiOf(p){ const r = kiData.ratings[p.id]; return r && Date.now() - r.ts < KI_MAX_AGE ? r : null; }
+function kiHtml(p){
+  const r = kiOf(p); if(!r) return '<span style="color:var(--muted)">–</span>';
+  const [cls] = tierOf(r.r);
+  const when = new Date(r.ts).toLocaleString('de-CH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  return `<span class="score ${cls}" title="${esc('KI ('+when+'): '+r.t)}">${r.r}</span>`;
+}
+async function loadKi(){
+  try { kiData = await getJSON('/api/ki/ratings'); } catch(e){ kiData = { ratings:{}, meta:{} }; }
+  renderKiStatus();
+}
+function renderKiStatus(){
+  const m = kiData.meta || {}, n = Object.keys(kiData.ratings || {}).length;
+  const last = m.lastRun ? new Date(m.lastRun).toLocaleString('de-CH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '–';
+  $('kiStatus').innerHTML = `🤖 KI-Bot: <b>${n}</b> Spieler bewertet${m.watched ? ` (von ${m.watched} beobachteten, ${m.pending||0} fällig)` : ''} · letzter Lauf ${last}` +
+    (m.lastError ? ` · <span style="color:var(--warn)" title="${esc(m.lastError)}">letzter Fehler</span>` : '');
+}
+let watchSent = false;
+function infoLine(p){
+  const nx = (p.next||[]).slice(0,2).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'})`).join(' ');
+  const st = { a:'fit', d:`fraglich${p.chance!=null?' '+p.chance+'%':''}`, i:'verletzt', s:'gesperrt', u:'nicht verfügbar', n:'nicht verfügbar' }[p.status] || p.status;
+  return `${p.minutes} Min/${p.starts} Starts Saison, Min L5 ${Math.round(p.minL5)}, ${p.goals}T ${p.assists}A, xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}, Ø Pkt L10 ${fmt(p.l10,1)}` +
+    `${p.setPieces && p.setPieces.length ? ', Standards: '+p.setPieces.join('/') : ''} | Status: ${st}${p.news ? ' – '+p.news : ''} | Nächste: ${nx}`;
+}
+async function sendWatchlist(){
+  if(watchSent || !histById || !sleeper.rosters.length) return;
+  const ids = new Set();
+  if(sleeper.rosters.length) for(const id in sleeper.ownerByFpl) ids.add(+id);
+  const freePool = players.filter(p => !ownerOf(p) && p.minutes >= 90).sort((a,b)=>b.score-a.score);
+  freePool.slice(0, sleeper.rosters.length ? 100 : 200).forEach(p => ids.add(p.id));
+  const list = players.filter(p => ids.has(p.id)).map(p => ({ id:p.id, name:p.full, club:teams[p.teamId].short, pos:p.pos, line:infoLine(p) }));
+  if(!list.length) return;
+  watchSent = true;
+  try { await fetch('/api/ki/watchlist', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ players:list }) }); } catch(e){ watchSent = false; }
+  loadKi().then(renderAll);
+}
+let kiRunning = false;
+async function runKiNow(){
+  if(kiRunning) { kiRunning = false; return; }
+  kiRunning = true; $('kiRun').textContent = 'Stopp';
+  try {
+    for(let round = 0; round < 25 && kiRunning; round++){
+      $('kiStatus').innerHTML = `🤖 KI-Bot bewertet … (Runde ${round+1})`;
+      const r = await fetch('/api/ki/run', { method:'POST' }); const j = await r.json().catch(() => ({}));
+      await loadKi(); renderAll();
+      if(!r.ok){ $('kiStatus').innerHTML += ` · <span style="color:var(--warn)">${esc(j.error || 'Fehler')}</span>`; break; }
+      if(!j.pending) break;
+      // Pause wegen Groq-Gratislimit (Tokens pro Minute)
+      for(let w = 30; w > 0 && kiRunning; w--){ $('kiRun').textContent = `Stopp (weiter in ${w}s)`; await new Promise(res => setTimeout(res, 1000)); }
+    }
+  } finally { kiRunning = false; $('kiRun').textContent = 'Jetzt bewerten'; renderKiStatus(); }
+}
+
 function tierOf(sc){
   if(sc >= 80) return ['elite','Top'];
   if(sc >= 65) return ['strong','Stark'];
@@ -464,7 +623,7 @@ function tierOf(sc){
 function scoreHtml(p){
   if(p.score == null) return '–';
   const [cls, label] = tierOf(p.score);
-  const tip = Object.keys(SCORE_SHORT).map(k => `${SCORE_SHORT[k]}: ${Math.round((p.comp[k]||0)*100)}`).join(' · ') +
+  const tip = Object.keys(SCORE_SHORT).map(k => `${SCORE_SHORT[k]}: ${p.comp[k]==null?'–':Math.round(p.comp[k]*100)}`).join(' · ') +
     ` | Ø L10: ${fmt(p.l10,1)} Pkt · Min L5: ${Math.round(p.minL5)}`;
   return `<span class="score ${cls}" title="${esc(label+' — '+tip)}">${p.score}</span>`;
 }
@@ -503,7 +662,8 @@ async function loadFPL(){
     yellow:num(e.yellow_cards), red:num(e.red_cards), ownGoals:num(e.own_goals),
     starts:num(e.starts), tackles:num(e.tackles), cbi:num(e.clearances_blocks_interceptions), recoveries:num(e.recoveries),
     form:num(e.form), fplPts:num(e.total_points), sel:num(e.selected_by_percent),
-    status:e.status, news:e.news || '', chance:e.chance_of_playing_next_round
+    status:e.status, news:e.news || '', chance:e.chance_of_playing_next_round,
+    penOrder:e.penalties_order, fkOrder:e.direct_freekicks_order, cornerOrder:e.corners_and_indirect_freekicks_order
   }));
 
   const tsel = $('team');
@@ -610,19 +770,21 @@ const COLS = [
   {k:'pos', t:'Pos', l:true},
   {k:'owner', t:'Besitzer', l:true},
   {k:'score', t:'Score'},
+  {k:'ki', t:'KI'},
+  {k:'xfp', t:'xFP'},
+  {k:'ceil', t:'Floor–Ceil'},
+  {k:'xMin', t:'xMin'},
   {k:'minutes', t:'Min'},
   {k:'goals', t:'T'},
   {k:'assists', t:'A'},
   {k:'xg', t:'xG'},
   {k:'xa', t:'xA'},
-  {k:'cs', t:'ZN'},
-  {k:'saves', t:'Par.'},
   {k:'l10', t:'Ø L10'},
   {k:'minL5', t:'Min L5'},
   {k:'pts', t:'Pkt'},
   {k:'pts90', t:'Pkt/90'},
   {k:'xpts90', t:'xPkt/90'},
-  {k:'proj', t:'Prognose'},
+  {k:'proj', t:'xFP Σ'},
   {k:'fdr', t:'Nächste Gegner', l:true, nosort:true},
 ];
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
@@ -638,6 +800,7 @@ function sortVal(p,k){
   if(k==='team') return teams[p.teamId].short;
   if(k==='pos') return p.pos;
   if(k==='owner'){ const o=ownerOf(p); return o ? (sleeper.users[o]||'') : ''; }
+  if(k==='ki'){ const r = kiOf(p); return r ? r.r : -1; }
   return p[k];
 }
 function filtered(){
@@ -654,6 +817,11 @@ function filtered(){
     if(state.avail==='mine' && (!o || o!==sleeper.me)) return false;
     return true;
   });
+}
+function spHtml(p){
+  if(!p.setPieces || !p.setPieces.length) return '';
+  const ic = { Elfmeter:'P', Freistoss:'FK', Ecken:'E' };
+  return ' ' + p.setPieces.map(x => `<span class="sp" title="Schütze Nr. 1: ${x}">${ic[x]}</span>`).join('');
 }
 function sparkHtml(p){
   if(!p.log || !p.log.length) return '';
@@ -681,27 +849,31 @@ function renderTable(){
     const news = p.news ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
     return `<tr class="${cls}">
       <td class="l"><input type="checkbox" data-id="${p.id}" ${state.selected.has(p.id)?'checked':''}></td>
-      <td class="l"><span class="pname">${esc(p.name)}</span> ${news}</td>
+      <td class="l"><span class="pname">${esc(p.name)}</span> ${news}${spHtml(p)}</td>
       <td class="l">${esc(teams[p.teamId].short)}</td>
       <td class="l"><span class="pos ${p.pos}">${p.pos}</span></td>
       <td class="l">${ownerLabel(p)}</td>
       <td>${scoreHtml(p)}</td>
+      <td>${kiHtml(p)}</td>
+      <td class="big mono">${fmt(p.xfp,1)}</td>
+      <td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td>
+      <td class="mono" title="Startwahrscheinlichkeit ${Math.round((p.pStart||0)*100)}%">${Math.round(p.xMin||0)}</td>
       <td>${p.minutes}</td><td>${p.goals}</td><td>${p.assists}</td>
-      <td>${fmt(p.xg)}</td><td>${fmt(p.xa)}</td><td>${p.cs}</td><td>${p.saves}</td>
+      <td>${fmt(p.xg)}</td><td>${fmt(p.xa)}</td>
       <td>${fmt(p.l10,1)} ${sparkHtml(p)}</td><td>${Math.round(p.minL5)}</td><td>${fmt(p.pts,0)}</td>
       <td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.xpts90,2)}</td>
-      <td class="big mono">${fmt(p.proj,1)}</td>
+      <td class="mono">${fmt(p.proj,1)}</td>
       <td class="l">${fdrHtml(p)}</td>
     </tr>`;
   }).join('');
-  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Prognose = erwartete Punkte in den nächsten ${state.horizon} Runden`;
+  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario (15./85. Perzentil) · xMin = erwartete Minuten · xFP Σ = nächste ${state.horizon} Runden`;
 }
 function renderCompare(){
   const sel = players.filter(p => state.selected.has(p.id));
   if(!sel.length){ $('cmp').className='empty'; $('cmp').innerHTML='Noch keine Spieler ausgewählt.'; return; }
   $('cmp').className='';
   const metrics = [
-    ['PL-Scout-Score','score',0],['Ø Pkt letzte 10','l10',1],['Ø Pkt letzte 3','l3',1],['Min. letzte 5','minL5',0],
+    ['PL-Scout-Score','score',0],['xFP nächstes Spiel','xfp',1],['Floor','floor',1],['Ceiling','ceil',1],['xMin','xMin',0],['Ø Pkt letzte 10','l10',1],['Ø Pkt letzte 3','l3',1],['Min. letzte 5','minL5',0],
     ['Prognose','proj',1],['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
     ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['FPL-Form','form',1]
   ];
@@ -711,10 +883,12 @@ function renderCompare(){
     h += `<tr><td class="l">${label}</td>${sel.map(p=>`<td class="${sel.length>1&&p[k]===max&&max>0?'best':''}">${fmt(p[k],d)}</td>`).join('')}</tr>`;
   }
   h += `<tr><td class="l">Gegner</td>${sel.map(p=>`<td>${fdrHtml(p)}</td>`).join('')}</tr>`;
+  h += `<tr><td class="l">KI-Bewertung</td>${sel.map(p=>{ const r = kiOf(p); return `<td>${r ? kiHtml(p)+'<div class="kitext">'+esc(r.t)+'</div>' : '–'}</td>`; }).join('')}</tr>`;
+  h += `<tr><td class="l">Standards</td>${sel.map(p=>`<td>${p.setPieces && p.setPieces.length ? esc(p.setPieces.join(', ')) : '–'}</td>`).join('')}</tr>`;
   h += `<tr><td class="l" colspan="${sel.length+1}" style="color:var(--muted);font-size:11px;padding-top:12px">SCORE-BAUSTEINE (0–100, im Vergleich zur Position)</td></tr>`;
   for(const k of Object.keys(SCORE_SHORT)){
-    const vals = sel.map(p => Math.round((p.comp?.[k]||0)*100)); const max = Math.max(...vals);
-    h += `<tr><td class="l">${SCORE_SHORT[k]} <span style="color:var(--muted);font-size:11px">(${scoreW[k]}%)</span></td>${vals.map(v=>`<td class="${sel.length>1&&v===max&&max>0?'best':''}">${v}<span class="bar"><i style="width:${v}%"></i></span></td>`).join('')}</tr>`;
+    const vals = sel.map(p => p.comp?.[k]==null ? null : Math.round(p.comp[k]*100)); const max = Math.max(...vals.map(v=>v??-1));
+    h += `<tr><td class="l">${SCORE_SHORT[k]} <span style="color:var(--muted);font-size:11px">(${scoreW[k]}%)</span></td>${vals.map(v=>v==null?'<td>–</td>':`<td class="${sel.length>1&&v===max&&max>0?'best':''}">${v}<span class="bar"><i style="width:${v}%"></i></span></td>`).join('')}</tr>`;
   }
   $('cmp').innerHTML = h + '</tbody></table>';
 }
@@ -799,18 +973,18 @@ function rosterCard(r){
       <td class="l"><span class="pos ${x.pos}">${x.pos}</span></td>
       <td class="l"><span class="pname">${esc(x.name)}</span> ${inj}</td>
       <td class="l">${esc(x.club)}</td>
-      ${p ? `<td>${scoreHtml(p)}</td><td>${p.minutes}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="big mono">${fmt(p.proj)}</td><td class="l">${fdrHtml(p)}</td>`
-          : `<td colspan="7" class="l nodata">keine Stats zugeordnet</td>`}
+      ${p ? `<td>${scoreHtml(p)}</td><td>${kiHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.proj)}</td><td class="l">${fdrHtml(p)}</td>`
+          : `<td colspan="9" class="l nodata">keine Stats zugeordnet</td>`}
     </tr>`;
   };
-  const head = `<tr><th class="l">Pos</th><th class="l">Spieler</th><th class="l">Klub</th><th>Score</th><th>Min</th><th>T</th><th>A</th><th>Pkt/90</th><th>Prognose</th><th class="l">Nächste Gegner</th></tr>`;
+  const head = `<tr><th class="l">Pos</th><th class="l">Spieler</th><th class="l">Klub</th><th>Score</th><th>KI</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>xFP Σ</th><th class="l">Nächste Gegner</th></tr>`;
   return `<div class="card roster">
     <div class="teamhead"><h3>${esc(sleeper.users[r.owner]||'?')}${r.owner===sleeper.me?' (du)':''}</h3>
       <div class="kpis"><div><b>${t.rec}</b>Bilanz</div><div><b>${fmt(t.fpts,1)}</b>Punkte</div><div><b>${fmt(t.projStart)}</b>Prognose Startelf</div></div></div>
     <table><thead>${head}</thead><tbody>
-      <tr class="sect"><td colspan="10">Startelf (${t.starters.length})</td></tr>
-      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="10" class="l nodata">Keine Startelf gesetzt</td></tr>'}
-      <tr class="sect"><td colspan="10">Bank (${t.bench.length})</td></tr>
+      <tr class="sect"><td colspan="12">Startelf (${t.starters.length})</td></tr>
+      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="12" class="l nodata">Keine Startelf gesetzt</td></tr>'}
+      <tr class="sect"><td colspan="12">Bank (${t.bench.length})</td></tr>
       ${t.bench.map(x=>row(x,'bench')).join('')}
     </tbody></table></div>`;
 }
@@ -821,8 +995,9 @@ const DEFAULT_LEAGUE = '1393632953241735168';
 function line(p){
   const nx = (p.next||[]).slice(0,4).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'}${f.d})`).join(' ');
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
-  const comp = p.comp ? Object.keys(SCORE_SHORT).map(k => `${SCORE_SHORT[k]} ${Math.round((p.comp[k]||0)*100)}`).join(', ') : '';
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
+  const ki = kiOf(p);
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | xFP ${fmt(p.xfp,1)} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI ${ki.r}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}`;
 }
@@ -996,8 +1171,8 @@ $('scoring').addEventListener('input', e => {
   const k = e.target.dataset.sk; if(!k) return;
   scoring[k] = num(e.target.value); store.set('scoring', scoring); renderAll();
 });
-$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
-$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW', scoreW); renderAll(); });
+$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW2', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
+$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW2', scoreW); renderAll(); });
 $('meSel').addEventListener('change', e => {
   sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); store.set('me', sleeper.me);
   const u = new URL(location.href); if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me'); history.replaceState(null,'',u);
@@ -1007,6 +1182,7 @@ async function doLoadLeague(){
   const id = $('leagueId').value.trim(); if(!id) return;
   try {
     await loadSleeper(id);
+    setTimeout(sendWatchlist, 1500);
     const u = new URL(location.href); u.searchParams.set('league', id);
     if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me');
     history.replaceState(null,'',u);
@@ -1014,6 +1190,7 @@ async function doLoadLeague(){
   } catch(e){ setStatus('Sleeper: '+e.message, true); }
 }
 $('loadLeague').addEventListener('click', doLoadLeague);
+$('kiRun').addEventListener('click', runKiNow);
 $('chips').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; $('chatIn').value = b.dataset.q; refreshPreview(); askCoach(); });
 $('askBtn').addEventListener('click', () => askCoach());
 $('chatIn').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); askCoach(); } });
@@ -1049,8 +1226,10 @@ $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeagu
     await loadFPL();
     setStatus(`${players.length} Spieler geladen · lade Formdaten der letzten Spiele …`);
     renderAll();
+    loadKi().then(renderAll);
     loadHistory().then(() => {
       renderAll();
+      setTimeout(sendWatchlist, 3000);
       if(!/Liga/.test($('status').textContent)) setStatus(`${players.length} Spieler geladen · Form aus ${histById.__gws.length} Spieltagen.`);
     }).catch(e => console.warn('Formdaten', e));
   } catch(e){

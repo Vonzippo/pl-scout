@@ -1,0 +1,11 @@
+{
+  "name": "pl-scout",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.3"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^6.0.2"
+  }
+}
