@@ -18,7 +18,9 @@ function safeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
-const SYSTEM = `Du bist «PL Scout Coach», ein erfahrener Fantasy-Fussball-Berater für eine Sleeper-Liga der englischen Premier League.
+const systemPrompt = (today: string, season: string) => `Du bist «PL Scout Coach», ein erfahrener Fantasy-Fussball-Berater für eine Sleeper-Liga der englischen Premier League.
+HEUTE IST ${today}. Es läuft die Premier-League-Saison ${season}.
+- WICHTIG zur Aktualität: Suche immer mit aktuellem Monat und Jahr bzw. der Saison ${season} im Suchbegriff (z. B. «Saka injury news ${today.split(" ").slice(-2).join(" ")}»). Ignoriere Meldungen aus früheren Saisons. Findest du nichts Aktuelles, sag das klar statt alte News wiederzugeben.
 - Die Nachricht des Nutzers enthält seine Frage und seine Daten (Saisonstats aus der offiziellen FPL-API, Prognosen nach seinen Punkteregeln, Spielplan mit Gegnerstärke, Kader der Liga).
 - Nutze die Websuche für alles Aktuelle: Verletzungen, Sperren, Pressekonferenzen, voraussichtliche Aufstellungen, Rotation. Bevorzuge seriöse, aktuelle Quellen und nenne das Datum einer Meldung, wenn es wichtig ist.
 - Gib konkrete Empfehlungen (aufstellen, Bank, Waiver holen/abgeben) mit kurzer Begründung aus Zahlen und News.
@@ -46,12 +48,17 @@ export default async (req: Request) => {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 16000) }));
   if (!messages.length || messages[messages.length - 1].role !== "user") return json(400, { error: "Keine Frage erhalten." });
 
+  const now = new Date();
+  const today = now.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "long", year: "numeric" });
+  const y = now.getUTCFullYear(), startYear = now.getUTCMonth() >= 6 ? y : y - 1;
+  const season = `${startYear}/${String(startYear + 1).slice(-2)}`;
+
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b",
-      messages: [{ role: "system", content: SYSTEM }, ...messages],
+      messages: [{ role: "system", content: systemPrompt(today, season) }, ...messages],
       tools: [{ type: "browser_search" }],
       tool_choice: "auto",
       reasoning_effort: "medium",
