@@ -125,6 +125,14 @@ input.need{border-color:var(--warn);outline:2px solid var(--warn)}
 .composer textarea{flex:1;font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical;min-height:46px}
 .dots::after{content:'…';animation:blink 1s infinite}
 @keyframes blink{50%{opacity:.2}}
+.score{display:inline-block;min-width:34px;text-align:center;font-weight:800;border-radius:7px;padding:3px 6px;font-family:"JetBrains Mono",monospace;cursor:help}
+.score.elite{background:#37e39b;color:#04140d}.score.strong{background:#1f7a54;color:#e9fff5}.score.solid{background:#2c3a4d;color:#dbe7f5}.score.weak{background:#4a3a1c;color:#ffd99a}.score.bad{background:#4a1d26;color:#ffb3bd}
+.bar{display:inline-block;width:70px;height:7px;border-radius:4px;background:var(--line);vertical-align:middle;margin-left:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent2)}
+.legend{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin:-4px 0 10px}
+.spark{display:inline-flex;gap:2px;align-items:flex-end;height:18px;vertical-align:middle}
+.spark i{display:block;width:5px;background:var(--accent2);border-radius:1px;min-height:1px}
+.spark i.neg{background:var(--bad)}.spark i.zero{background:var(--line)}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -148,7 +156,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <div id="teamsBody" hidden>
       <div class="card lgtable" style="margin-bottom:12px">
         <h2>Liga-Übersicht <span>Klick auf ein Team zeigt den Kader · Prognose = nächste <span id="hzLabel">3</span> Runden</span></h2>
-        <table><thead><tr><th class="l">#</th><th class="l">Team</th><th>Bilanz</th><th>Punkte</th><th>Prognose Startelf</th><th>Prognose Kader</th><th>Ø Pkt/90 Startelf</th></tr></thead><tbody id="lgBody"></tbody></table>
+        <table><thead><tr><th class="l">#</th><th class="l">Team</th><th>Bilanz</th><th>Punkte</th><th>Prognose Startelf</th><th>Prognose Kader</th><th>Ø Pkt/90 Startelf</th><th>Ø Score Startelf</th></tr></thead><tbody id="lgBody"></tbody></table>
       </div>
       <div class="teamsbar">
         <label>Team <select id="teamA"></select></label>
@@ -217,8 +225,22 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   </div>
 
   <details class="card" id="scoringCard" style="margin-bottom:12px">
-    <summary>Punkteregeln (an deine Sleeper-Liga anpassen)</summary>
+    <summary>Einstellungen: Punkteregeln & Score-Gewichtung</summary>
     <div class="scoring" id="scoring"></div>
+    <h2 style="margin-top:16px">PL-Scout-Score – Gewichtung in % <span>wie stark jeder Baustein zählt</span></h2>
+    <div class="scoring" id="scoreWeights"></div>
+    <details style="margin-top:8px"><summary class="empty" style="cursor:pointer">Wie wird der Score berechnet?</summary>
+      <ul class="empty" style="line-height:1.6;margin:6px 0">
+        <li><b>Form:</b> Punkte pro Spiel nach deinen Regeln in den letzten 10 Spielen, neuere Spiele zählen stärker.</li>
+        <li><b>Effizienz:</b> Punkte pro 90 Minuten über die Saison; bei wenig Einsatzzeit zum Positions-Schnitt hin geglättet (kein Glückstreffer-Bonus).</li>
+        <li><b>Einsatzzeit:</b> Minuten-Schnitt der letzten 5 Spiele (70%) und Startelf-Quote der letzten 10 (30%).</li>
+        <li><b>News & Fitness:</b> offizieller Verletzungs-/Sperrstatus und Einsatzwahrscheinlichkeit der Premier League, ergänzt um den Sleeper-Status. Verletzt/gesperrt drückt den Gesamtscore stark.</li>
+        <li><b>Gegner:</b> durchschnittliche Schwierigkeit der nächsten 3 Spiele.</li>
+        <li><b>Expected:</b> Punkte pro 90 Min., berechnet aus xG, xA und erwarteten Gegentoren – zeigt, ob die Leistung nachhaltig ist.</li>
+        <li><b>Trend:</b> letzte 3 Spiele im Vergleich zu den letzten 10.</li>
+        <li>Form, Effizienz, Expected und Trend werden <b>innerhalb der Position</b> verglichen (Perzentil), damit Torhüter, Verteidiger, Mittelfeld und Sturm fair bewertet werden.</li>
+      </ul>
+    </details>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="ghost" id="resetScoring">Standard wiederherstellen</button>
     </div>
@@ -228,6 +250,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     </div>
   </details>
 
+  <div class="legend">PL-Scout-Score: <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine</div>
   <div class="tablewrap">
     <table>
       <thead><tr id="thead"></tr></thead>
@@ -266,10 +289,11 @@ const store = {
 
 let scoring = Object.assign({}, DEFAULT_SCORING, store.get('scoring') || {});
 let players = [], teams = {}, fixturesByTeam = {}, gamesPlayed = 1, nextGw = null;
+let playedGwByTeam = {}, finishedGws = [], histById = null;
 let sleeper = { ownerByFpl: {}, fplBySleeper: {}, users: {}, me: '', rosters: [], sp: {} };
 const SPOS = {GK:'GKP',G:'GKP',D:'DEF',M:'MID',F:'FWD'};
 let view = 'players', teamA = '', teamB = '';
-const state = { q:'', pos:'', team:'', avail:'', minMin:270, horizon:3, fitOnly:false, sort:'proj', dir:-1, selected:new Set() };
+const state = { q:'', pos:'', team:'', avail:'', minMin:270, horizon:3, fitOnly:false, sort:'score', dir:-1, selected:new Set() };
 
 const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
@@ -316,13 +340,140 @@ function recompute(){
     p.next = fx;
     p.proj = fx.reduce((sum,f) => sum + base * fixtureFactor(f.d), 0);
   }
+  computeScores();
+}
+
+/* ---------- PL-Scout-Score ---------- */
+const SCORE_DEFAULT = { form:25, eff:20, min:15, news:15, fix:10, xs:10, trend:5 };
+const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Einsatzzeit aktuell', news:'News & Fitness', fix:'Gegner (nächste 3)', xs:'Expected (xG/xA-basiert)', trend:'Trend (letzte 3 vs. 10)' };
+const SCORE_SHORT = { form:'Form', eff:'Effizienz', min:'Minuten', news:'News', fix:'Gegner', xs:'Expected', trend:'Trend' };
+let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW') || {});
+const N_FORM = 10;
+
+function liveToP(pos, st){
+  return { pos, minutes:num(st.minutes), goals:num(st.goals_scored), assists:num(st.assists), xg:num(st.expected_goals), xa:num(st.expected_assists),
+    cs:num(st.clean_sheets), gc:num(st.goals_conceded), xgc:num(st.expected_goals_conceded), saves:num(st.saves),
+    penSaved:num(st.penalties_saved), penMissed:num(st.penalties_missed), yellow:num(st.yellow_cards), red:num(st.red_cards),
+    ownGoals:num(st.own_goals), starts:num(st.starts), tackles:num(st.tackles), cbi:num(st.clearances_blocks_interceptions), recoveries:num(st.recoveries) };
+}
+async function loadHistory(){
+  const gws = finishedGws.slice(-N_FORM);
+  const res = await Promise.allSettled(gws.map(gw => getJSON(`/api/fpl/event/${gw}/live/`)));
+  histById = {};
+  res.forEach((r, i) => {
+    if(r.status !== 'fulfilled') return;
+    for(const e of (r.value.elements || [])) (histById[e.id] ||= {})[gws[i]] = e.stats;
+  });
+  histById.__gws = gws.filter((g, i) => res[i].status === 'fulfilled');
+}
+// Spiele der letzten (bis zu) 10 Spieltage, an denen der Klub gespielt hat
+function gameLog(p){
+  if(!histById) return null;
+  const out = [];
+  for(const gw of histById.__gws){
+    if(!(playedGwByTeam[p.teamId] || {})[gw]) continue; // Klub hatte spielfrei
+    const st = (histById[p.id] || {})[gw];
+    const q = st ? liveToP(p.pos, st) : liveToP(p.pos, {});
+    out.push({ gw, min:q.minutes, start:q.starts > 0 || q.minutes >= 60, pts: q.minutes > 0 ? pointsFrom(q, scoring, false) : 0 });
+  }
+  return out;
+}
+const clamp01 = v => Math.max(0, Math.min(1, v));
+function pctRank(sorted, v){
+  if(!sorted.length) return 0.5;
+  let lo = 0, hi = sorted.length;
+  while(lo < hi){ const m = (lo+hi) >> 1; if(sorted[m] < v) lo = m+1; else hi = m; }
+  let hi2 = lo; while(hi2 < sorted.length && sorted[hi2] === v) hi2++;
+  return clamp01(((lo + hi2) / 2) / sorted.length);
+}
+function newsValue(p){
+  let v;
+  if(['i','s','u','n'].includes(p.status)) v = 0;
+  else if(p.status === 'd') v = p.chance != null ? p.chance/100 : 0.5;
+  else v = p.news ? 0.9 : 1;
+  const sl = sleeper.slByFpl && sleeper.slByFpl[p.id];
+  if(sl){ const s = sl.toLowerCase(); if(s === 'out' || s === 'ir' || s === 'sus') v = Math.min(v, 0); else if(s.startsWith('quest') || s === 'doubtful') v = Math.min(v, s==='doubtful'?0.25:0.5); }
+  return v;
+}
+function computeScores(){
+  // 1) Rohwerte
+  for(const p of players){
+    const log = gameLog(p);
+    const r = p.raw = {};
+    if(log && log.length){
+      const n = log.length;
+      let ws = 0, wsum = 0;
+      log.forEach((g, i) => { const w = 1 + i / Math.max(1, n-1); ws += g.pts * w; wsum += w; }); // neuere Spiele zählen mehr
+      p.l10 = log.reduce((t,g)=>t+g.pts,0) / n;
+      p.l10games = n;
+      r.form = ws / wsum;
+      const last3 = log.slice(-3), last5 = log.slice(-5);
+      p.l3 = last3.reduce((t,g)=>t+g.pts,0) / last3.length;
+      r.trend = p.l3 - p.l10;
+      p.minL5 = last5.reduce((t,g)=>t+g.min,0) / last5.length;
+      p.startRate = log.filter(g=>g.start).length / n;
+      p.log = log;
+    } else {
+      const g = Math.max(1, gamesPlayed);
+      p.l10 = p.pts / g; p.l10games = 0; r.form = p.l10; p.l3 = p.l10; r.trend = 0;
+      p.minL5 = Math.min(90, p.minutes / g); p.startRate = Math.min(1, p.starts / g); p.log = null;
+    }
+    r.min = clamp01(p.minL5 / 90) * 0.7 + p.startRate * 0.3;
+    r.news = newsValue(p);
+    const nx = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw).slice(0, 3);
+    r.fix = nx.length ? clamp01((5 - nx.reduce((t,f)=>t+f.d,0)/nx.length) / 3) : 0.3;
+  }
+  // 2) Positions-Vergleich: Effizienz mit Minuten-Glättung, Perzentile je Position
+  for(const pos of ['GKP','DEF','MID','FWD']){
+    const grp = players.filter(p => p.pos === pos);
+    const pool = grp.filter(p => p.minutes >= 180);
+    const mean = k => pool.length ? pool.reduce((t,p)=>t+p[k],0)/pool.length : 0;
+    const m90 = mean('pts90'), mx90 = mean('xpts90');
+    for(const p of grp){
+      const w = p.minutes / (p.minutes + 270);
+      p.raw.eff = p.pts90 * w + m90 * (1 - w);
+      p.raw.xs = p.xpts90 * w + mx90 * (1 - w);
+    }
+    const sorted = k => pool.map(p => p.raw[k]).sort((a,b)=>a-b);
+    const S = { form:sorted('form'), eff:sorted('eff'), xs:sorted('xs'), trend:sorted('trend') };
+    for(const p of grp){
+      p.comp = {
+        form: pctRank(S.form, p.raw.form), eff: pctRank(S.eff, p.raw.eff), xs: pctRank(S.xs, p.raw.xs),
+        trend: pctRank(S.trend, p.raw.trend), min: p.raw.min, news: p.raw.news, fix: p.raw.fix
+      };
+      // wer kaum spielt, bekommt bei Form/Trend keinen Bonus
+      if(p.minL5 < 20){ p.comp.form *= 0.5; p.comp.trend = Math.min(p.comp.trend, 0.5); }
+    }
+  }
+  // 3) Gewichtete Summe + Verfügbarkeits-Abschlag
+  const W = Object.entries(scoreW).filter(([k,v]) => v > 0);
+  const wsum = W.reduce((t,[,v])=>t+v,0) || 1;
+  for(const p of players){
+    let sc = W.reduce((t,[k,v]) => t + v * (p.comp[k] ?? 0), 0) / wsum * 100;
+    if(p.comp.news === 0) sc *= 0.35; else if(p.comp.news < 0.5) sc *= 0.75;
+    p.score = Math.round(sc);
+  }
+}
+function tierOf(sc){
+  if(sc >= 80) return ['elite','Top'];
+  if(sc >= 65) return ['strong','Stark'];
+  if(sc >= 50) return ['solid','Solide'];
+  if(sc >= 35) return ['weak','Ersatz'];
+  return ['bad','Meiden'];
+}
+function scoreHtml(p){
+  if(p.score == null) return '–';
+  const [cls, label] = tierOf(p.score);
+  const tip = Object.keys(SCORE_SHORT).map(k => `${SCORE_SHORT[k]}: ${Math.round((p.comp[k]||0)*100)}`).join(' · ') +
+    ` | Ø L10: ${fmt(p.l10,1)} Pkt · Min L5: ${Math.round(p.minL5)}`;
+  return `<span class="score ${cls}" title="${esc(label+' — '+tip)}">${p.score}</span>`;
 }
 
 /* ---------- Daten laden ---------- */
 async function loadFPL(){
   const [boot, fixtures] = await Promise.all([
     getJSON('/api/fpl/bootstrap-static/'),
-    getJSON('/api/fpl/fixtures/?future=1')
+    getJSON('/api/fpl/fixtures/')
   ]);
   teams = {};
   for(const t of boot.teams) teams[t.id] = { name:t.name, short:t.short_name };
@@ -332,9 +483,11 @@ async function loadFPL(){
   gamesPlayed = Math.max(1, ev.filter(e => e.finished).length);
   $('gwinfo').textContent = next ? `Nächster Spieltag: GW ${next.id} · ${gamesPlayed} Spieltage gespielt` : 'Saison beendet';
 
-  fixturesByTeam = {};
+  fixturesByTeam = {}; playedGwByTeam = {};
+  finishedGws = ev.filter(e => e.finished).map(e => e.id);
   for(const f of fixtures){
-    if(f.finished || f.event == null) continue;
+    if(f.event == null) continue;
+    if(f.finished){ (playedGwByTeam[f.team_h] ||= {})[f.event] = ((playedGwByTeam[f.team_h]||{})[f.event]||0) + 1; (playedGwByTeam[f.team_a] ||= {})[f.event] = ((playedGwByTeam[f.team_a]||{})[f.event]||0) + 1; continue; }
     (fixturesByTeam[f.team_h] ||= []).push({ gw:f.event, opp:f.team_a, home:true, d:f.team_h_difficulty });
     (fixturesByTeam[f.team_a] ||= []).push({ gw:f.event, opp:f.team_h, home:false, d:f.team_a_difficulty });
   }
@@ -403,7 +556,7 @@ async function loadSleeper(leagueId){
     const t = teams[fp.teamId]; const st = norm(abbr);
     return norm(t.short)===st || norm(t.name).startsWith(st);
   };
-  sleeper.ownerByFpl = {}; sleeper.fplBySleeper = {}; sleeper.sp = {};
+  sleeper.ownerByFpl = {}; sleeper.fplBySleeper = {}; sleeper.sp = {}; sleeper.slByFpl = {};
   let matched = 0, total = 0;
   for(const [pid, owner] of Object.entries(ownerBySleeper)){
     total++;
@@ -427,6 +580,7 @@ async function loadSleeper(leagueId){
     // Nur Nachnamen-Treffer ohne Klub-Übereinstimmung sind zu unsicher
     if(best && (bestScore >= 4 || pool.size === 1)){
       sleeper.ownerByFpl[best.id] = owner; sleeper.fplBySleeper[pid] = best.id; matched++;
+      if(s.injury_status) (sleeper.slByFpl ||= {})[best.id] = String(s.injury_status);
     }
   }
 
@@ -455,6 +609,7 @@ const COLS = [
   {k:'team', t:'Klub', l:true},
   {k:'pos', t:'Pos', l:true},
   {k:'owner', t:'Besitzer', l:true},
+  {k:'score', t:'Score'},
   {k:'minutes', t:'Min'},
   {k:'goals', t:'T'},
   {k:'assists', t:'A'},
@@ -462,7 +617,8 @@ const COLS = [
   {k:'xa', t:'xA'},
   {k:'cs', t:'ZN'},
   {k:'saves', t:'Par.'},
-  {k:'form', t:'Form'},
+  {k:'l10', t:'Ø L10'},
+  {k:'minL5', t:'Min L5'},
   {k:'pts', t:'Pkt'},
   {k:'pts90', t:'Pkt/90'},
   {k:'xpts90', t:'xPkt/90'},
@@ -499,6 +655,12 @@ function filtered(){
     return true;
   });
 }
+function sparkHtml(p){
+  if(!p.log || !p.log.length) return '';
+  const mx = Math.max(4, ...p.log.map(g => Math.abs(g.pts)));
+  return '<span class="spark" title="Punkte pro Spiel (letzte ' + p.log.length + '): ' + p.log.map(g=>g.pts.toFixed(0)).join(', ') + '">' +
+    p.log.map(g => `<i class="${g.min===0?'zero':(g.pts<0?'neg':'')}" style="height:${g.min===0?2:Math.max(2, Math.abs(g.pts)/mx*18)}px"></i>`).join('') + '</span>';
+}
 function fdrHtml(p){
   return '<span class="fdr">' + (p.next||[]).map(f =>
     `<span class="d${f.d}" title="GW ${f.gw}">${esc(teams[f.opp]?.short||'?')}${f.home?'':' (a)'}</span>`).join('') + '</span>';
@@ -523,9 +685,10 @@ function renderTable(){
       <td class="l">${esc(teams[p.teamId].short)}</td>
       <td class="l"><span class="pos ${p.pos}">${p.pos}</span></td>
       <td class="l">${ownerLabel(p)}</td>
+      <td>${scoreHtml(p)}</td>
       <td>${p.minutes}</td><td>${p.goals}</td><td>${p.assists}</td>
       <td>${fmt(p.xg)}</td><td>${fmt(p.xa)}</td><td>${p.cs}</td><td>${p.saves}</td>
-      <td>${fmt(p.form)}</td><td>${fmt(p.pts,0)}</td>
+      <td>${fmt(p.l10,1)} ${sparkHtml(p)}</td><td>${Math.round(p.minL5)}</td><td>${fmt(p.pts,0)}</td>
       <td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.xpts90,2)}</td>
       <td class="big mono">${fmt(p.proj,1)}</td>
       <td class="l">${fdrHtml(p)}</td>
@@ -538,8 +701,9 @@ function renderCompare(){
   if(!sel.length){ $('cmp').className='empty'; $('cmp').innerHTML='Noch keine Spieler ausgewählt.'; return; }
   $('cmp').className='';
   const metrics = [
+    ['PL-Scout-Score','score',0],['Ø Pkt letzte 10','l10',1],['Ø Pkt letzte 3','l3',1],['Min. letzte 5','minL5',0],
     ['Prognose','proj',1],['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
-    ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['Form','form',1]
+    ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['FPL-Form','form',1]
   ];
   let h = `<table><thead><tr><th class="l"></th>${sel.map(p=>`<th>${esc(p.name)} <button class="x" data-rm="${p.id}" title="entfernen">✕</button><br><small style="color:var(--muted)">${esc(teams[p.teamId].short)} · ${p.pos}</small></th>`).join('')}</tr></thead><tbody>`;
   for(const [label,k,d] of metrics){
@@ -547,6 +711,11 @@ function renderCompare(){
     h += `<tr><td class="l">${label}</td>${sel.map(p=>`<td class="${sel.length>1&&p[k]===max&&max>0?'best':''}">${fmt(p[k],d)}</td>`).join('')}</tr>`;
   }
   h += `<tr><td class="l">Gegner</td>${sel.map(p=>`<td>${fdrHtml(p)}</td>`).join('')}</tr>`;
+  h += `<tr><td class="l" colspan="${sel.length+1}" style="color:var(--muted);font-size:11px;padding-top:12px">SCORE-BAUSTEINE (0–100, im Vergleich zur Position)</td></tr>`;
+  for(const k of Object.keys(SCORE_SHORT)){
+    const vals = sel.map(p => Math.round((p.comp?.[k]||0)*100)); const max = Math.max(...vals);
+    h += `<tr><td class="l">${SCORE_SHORT[k]} <span style="color:var(--muted);font-size:11px">(${scoreW[k]}%)</span></td>${vals.map(v=>`<td class="${sel.length>1&&v===max&&max>0?'best':''}">${v}<span class="bar"><i style="width:${v}%"></i></span></td>`).join('')}</tr>`;
+  }
   $('cmp').innerHTML = h + '</tbody></table>';
 }
 function renderTips(){
@@ -591,6 +760,7 @@ function teamStats(r){
   return {
     projStart: sum(starters,'proj'), projAll: sum(starters,'proj')+sum(bench,'proj'),
     avg90: withMin.length ? withMin.reduce((t,x)=>t+x.p.pts90,0)/withMin.length : 0,
+    avgScore: (() => { const a = starters.filter(x=>x.p); return a.length ? a.reduce((t,x)=>t+x.p.score,0)/a.length : 0; })(),
     rec: `${r.st.wins||0}-${r.st.losses||0}${r.st.ties?'-'+r.st.ties:''}`,
     fpts: (r.st.fpts||0) + (r.st.fpts_decimal||0)/100,
     starters, bench
@@ -608,7 +778,7 @@ function renderTeams(){
     <td class="l">${i+1}</td><td class="l">${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''}</td>
     <td>${x.t.rec}</td><td>${fmt(x.t.fpts,1)}</td>
     <td class="mono ${x.t.projStart===maxProj?'big':''}">${fmt(x.t.projStart)}</td>
-    <td class="mono">${fmt(x.t.projAll)}</td><td class="mono">${fmt(x.t.avg90,2)}</td></tr>`).join('');
+    <td class="mono">${fmt(x.t.projAll)}</td><td class="mono">${fmt(x.t.avg90,2)}</td><td class="mono">${fmt(x.t.avgScore,0)}</td></tr>`).join('');
 
   if(!teamA || !sleeper.rosters.find(r=>r.owner===teamA)) teamA = sleeper.me || list[0].r.owner;
   const opts = list.map(x => `<option value="${esc(x.r.owner)}">${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''}</option>`).join('');
@@ -629,18 +799,18 @@ function rosterCard(r){
       <td class="l"><span class="pos ${x.pos}">${x.pos}</span></td>
       <td class="l"><span class="pname">${esc(x.name)}</span> ${inj}</td>
       <td class="l">${esc(x.club)}</td>
-      ${p ? `<td>${p.minutes}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="big mono">${fmt(p.proj)}</td><td class="l">${fdrHtml(p)}</td>`
-          : `<td colspan="6" class="l nodata">keine Stats zugeordnet</td>`}
+      ${p ? `<td>${scoreHtml(p)}</td><td>${p.minutes}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="big mono">${fmt(p.proj)}</td><td class="l">${fdrHtml(p)}</td>`
+          : `<td colspan="7" class="l nodata">keine Stats zugeordnet</td>`}
     </tr>`;
   };
-  const head = `<tr><th class="l">Pos</th><th class="l">Spieler</th><th class="l">Klub</th><th>Min</th><th>T</th><th>A</th><th>Pkt/90</th><th>Prognose</th><th class="l">Nächste Gegner</th></tr>`;
+  const head = `<tr><th class="l">Pos</th><th class="l">Spieler</th><th class="l">Klub</th><th>Score</th><th>Min</th><th>T</th><th>A</th><th>Pkt/90</th><th>Prognose</th><th class="l">Nächste Gegner</th></tr>`;
   return `<div class="card roster">
     <div class="teamhead"><h3>${esc(sleeper.users[r.owner]||'?')}${r.owner===sleeper.me?' (du)':''}</h3>
       <div class="kpis"><div><b>${t.rec}</b>Bilanz</div><div><b>${fmt(t.fpts,1)}</b>Punkte</div><div><b>${fmt(t.projStart)}</b>Prognose Startelf</div></div></div>
     <table><thead>${head}</thead><tbody>
-      <tr class="sect"><td colspan="9">Startelf (${t.starters.length})</td></tr>
-      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="9" class="l nodata">Keine Startelf gesetzt</td></tr>'}
-      <tr class="sect"><td colspan="9">Bank (${t.bench.length})</td></tr>
+      <tr class="sect"><td colspan="10">Startelf (${t.starters.length})</td></tr>
+      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="10" class="l nodata">Keine Startelf gesetzt</td></tr>'}
+      <tr class="sect"><td colspan="10">Bank (${t.bench.length})</td></tr>
       ${t.bench.map(x=>row(x,'bench')).join('')}
     </tbody></table></div>`;
 }
@@ -651,7 +821,8 @@ const DEFAULT_LEAGUE = '1393632953241735168';
 function line(p){
   const nx = (p.next||[]).slice(0,4).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'}${f.d})`).join(' ');
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  const comp = p.comp ? Object.keys(SCORE_SHORT).map(k => `${SCORE_SHORT[k]} ${Math.round((p.comp[k]||0)*100)}`).join(', ') : '';
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}`;
 }
@@ -663,6 +834,7 @@ function buildPrompt(question){
   const rules = Object.entries(scoring).filter(([k,v]) => v).map(([k,v]) => `${LABELS[k]} ${v>0?'+':''}${v}`).join(', ');
   out.push(`\nMEINE DATEN (Saisonstats aus der offiziellen FPL-API; nächster Spieltag GW ${nextGw}; Progn. = erwartete Punkte nach meinen Regeln in den nächsten ${state.horizon} Runden; Gegner(H/A + Schwierigkeit 1 leicht – 5 schwer); T=Tore, A=Assists, ZN=Zu-Null)`);
   out.push(`Punkteregeln: ${rules}`);
+  out.push(`SCORE = eigener PL-Scout-Score 0–100 (Bausteine je 0–100, im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). Ø L10/L3 = Punkte pro Spiel nach meinen Regeln in den letzten 10/3 Spielen; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
   const blocks = [];
   if(sleeper.rosters.length){
     const mine = sleeper.rosters.find(r => r.owner === sleeper.me);
@@ -673,7 +845,7 @@ function buildPrompt(question){
     }
     const free = players.filter(p => !ownerOf(p) && p.minutes >= 90);
     blocks.push('\nBESTE FREIE SPIELER (Waiver):\n' + ['GKP','DEF','MID','FWD'].map(pos =>
-      free.filter(p=>p.pos===pos).sort((a,b)=>b.proj-a.proj).slice(0, pos==='GKP'?3:5).map(p=>'- '+line(p)).join('\n')).filter(Boolean).join('\n'));
+      free.filter(p=>p.pos===pos).sort((a,b)=>b.score-a.score).slice(0, pos==='GKP'?3:5).map(p=>'- '+line(p)).join('\n')).filter(Boolean).join('\n'));
     blocks.push('\nMITSPIELER:\n' + sleeper.rosters.filter(r => r.owner !== sleeper.me).map(r => {
       const t = teamStats(r);
       return `- ${sleeper.users[r.owner]} (${t.rec}, ${t.fpts.toFixed(1)} Pkt, Progn. Startelf ${t.projStart.toFixed(1)}): ${t.starters.map(x=>x.name).join(', ')}`;
@@ -784,6 +956,10 @@ async function copyText(t){
   catch(e){ const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch(_){} ta.remove(); return ok; }
 }
 
+function renderScoreWeights(){
+  $('scoreWeights').innerHTML = Object.keys(SCORE_DEFAULT).map(k =>
+    `<label>${SCORE_LABELS[k]}<input type="number" min="0" max="100" step="5" data-sw="${k}" value="${scoreW[k]}"></label>`).join('');
+}
 function renderScoring(){
   $('scoring').innerHTML = Object.keys(DEFAULT_SCORING).map(k =>
     `<label>${LABELS[k]}<input type="number" step="0.1" data-sk="${k}" value="${scoring[k]}"></label>`).join('');
@@ -820,7 +996,8 @@ $('scoring').addEventListener('input', e => {
   const k = e.target.dataset.sk; if(!k) return;
   scoring[k] = num(e.target.value); store.set('scoring', scoring); renderAll();
 });
-$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); renderScoring(); renderAll(); });
+$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
+$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW', scoreW); renderAll(); });
 $('meSel').addEventListener('change', e => {
   sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); store.set('me', sleeper.me);
   const u = new URL(location.href); if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me'); history.replaceState(null,'',u);
@@ -867,11 +1044,15 @@ $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeagu
 
 /* ---------- Start ---------- */
 (async () => {
-  renderScoring();
+  renderScoring(); renderScoreWeights();
   try {
     await loadFPL();
-    setStatus(`${players.length} Spieler geladen.`);
+    setStatus(`${players.length} Spieler geladen · lade Formdaten der letzten Spiele …`);
     renderAll();
+    loadHistory().then(() => {
+      renderAll();
+      if(!/Liga/.test($('status').textContent)) setStatus(`${players.length} Spieler geladen · Form aus ${histById.__gws.length} Spieltagen.`);
+    }).catch(e => console.warn('Formdaten', e));
   } catch(e){
     setStatus('Spielerdaten konnten nicht geladen werden ('+e.message+'). Die Seite muss über Netlify laufen, damit der API-Proxy funktioniert.', true);
     return;
