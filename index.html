@@ -115,6 +115,7 @@ input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;padding:0
 .msg.ai li{margin:3px 0}
 .msg.ai strong{color:var(--accent)}
 .msg.err{border-color:var(--bad);color:var(--bad)}
+input.need{border-color:var(--warn);outline:2px solid var(--warn)}
 .mdt{border-collapse:collapse;margin:8px 0;min-width:0;width:auto}
 .mdt th,.mdt td{border:1px solid var(--line);padding:4px 8px;text-align:left;white-space:normal;position:static;background:transparent;cursor:default;font-size:13px}
 .activity{color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
@@ -742,6 +743,7 @@ async function askCoach(){
     const msgs = history.map((m,i) => ({ role:m.role, content: (m.role==='user' && i < history.length-1) ? (m.shown||m.content) : m.content }));
     const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs }) });
     let j = null; try { j = await res.json(); } catch(e){}
+    if(res.status === 401){ $('coachKey').classList.add('need'); $('coachKey').focus(); throw new Error('Bitte unten einmal das Coach-Passwort eingeben und nochmals «Coach fragen» klicken. Die Seite merkt es sich danach.'); }
     if(!res.ok || !j) throw new Error((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status));
     ai.content = j.answer + (j.truncated ? '\n\n*(Antwort wurde gekürzt.)*' : '');
     ai.sources = j.sources || []; ai.queries = j.queries || [];
@@ -817,7 +819,7 @@ $('askBtn').addEventListener('click', () => askCoach());
 $('chatIn').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); askCoach(); } });
 $('chatClear').addEventListener('click', () => { if(!chatBusy){ chat.length = 0; renderChat(); } });
 $('coachKey').value = store.get('coachKey') || '';
-$('coachKey').addEventListener('change', e => store.set('coachKey', e.target.value));
+$('coachKey').addEventListener('input', e => { store.set('coachKey', e.target.value); e.target.classList.remove('need'); });
 $('chatIn').addEventListener('input', refreshPreview);
 $('openWeb').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); window.open('https://claude.ai/new?q=' + encodeURIComponent(t), '_blank', 'noopener'); });
 $('openApp').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); location.href = 'claude://claude.ai/new?q=' + encodeURIComponent(t); });
