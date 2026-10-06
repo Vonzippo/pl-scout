@@ -304,7 +304,7 @@ const state = { q:'', pos:'', team:'', avail:'', minMin:270, horizon:3, fitOnly:
 
 const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
-const fmt = (v,d=1) => (v==null||isNaN(v)) ? '–' : v.toFixed(d);
+const fmt = (v,d=1) => { if(v==null||isNaN(v)) return '–'; const t = v.toFixed(d); return /^-0(\.0+)?$/.test(t) ? t.slice(1) : t; };
 const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function setStatus(msg, err){ const s=$('status'); s.textContent=msg; s.className='status'+(err?' err':''); }
 
