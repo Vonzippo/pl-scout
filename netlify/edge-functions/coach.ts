@@ -92,6 +92,11 @@ export default async (req: Request) => {
   const y = now.getUTCFullYear(), startYear = now.getUTCMonth() >= 6 ? y : y - 1;
   const season = `${startYear}/${String(startYear + 1).slice(-2)}`;
 
+  // Harte Tageslimite gegen Kosten
+  const secret = Netlify.env.get("KI_SECRET");
+  const q = secret ? await fetch(new URL("/api/ki/quota", req.url), { method: "POST", headers: { "content-type": "application/json", "x-ki-secret": secret }, body: JSON.stringify({ kind: "coach" }) }).then((r) => r.json()).catch(() => null) : null;
+  if (!q?.ok) return json(429, { error: `Tageslimit des Coaches erreicht (${q?.limit ?? "?"} Fragen pro Tag) – morgen wieder verfügbar, oder «In Claude öffnen» nutzen.` });
+
   const news = await gatherNews(body.news);
   const newsBlock = news.length
     ? `\n\nAKTUELLE SCHLAGZEILEN (Google News, letzte 7 Tage, neueste zuerst – vom System soeben abgerufen):\n` +

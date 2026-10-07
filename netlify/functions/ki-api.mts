@@ -1,6 +1,6 @@
 // API für KI-Bewertungen: lesen, Beobachtungsliste setzen, fällige Spieler, Ergebnisse speichern
 import type { Config } from "@netlify/functions";
-import { loadRatings, saveWatch, dueList, mergeRatings, noteError } from "../lib/kistore.ts";
+import { loadRatings, saveWatch, dueList, mergeRatings, noteError, takeQuota } from "../lib/kistore.ts";
 
 const json = (status: number, body: unknown, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...extra } });
@@ -38,7 +38,14 @@ export default async (req: Request) => {
     return json(200, { ok: true, total });
   }
 
+  if (path.endsWith("/quota") && req.method === "POST") {
+    const secret = Netlify.env.get("KI_SECRET");
+    if (!secret || req.headers.get("x-ki-secret") !== secret) return json(401, { error: "nicht erlaubt" });
+    const body: any = await req.json().catch(() => null);
+    return json(200, await takeQuota(String(body?.kind || "")));
+  }
+
   return json(404, { error: "unbekannt" });
 };
 
-export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save"] };
+export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota"] };

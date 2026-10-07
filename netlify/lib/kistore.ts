@@ -36,3 +36,17 @@ export async function dueList(n = 15) {
     .sort((a, b) => (ratings[a.id]?.ts || 0) - (ratings[b.id]?.ts || 0));
   return { due: due.slice(0, n), pending: due.length, total: watch.length };
 }
+
+// Harte Tageslimits (Schutz vor Kosten): zählt Aufrufe pro Tag und Art
+export const DAILY_LIMITS: Record<string, number> = { coach: 40, bot: 25 };
+export async function takeQuota(kind: string): Promise<{ ok: boolean; used: number; limit: number }> {
+  const limit = DAILY_LIMITS[kind] ?? 0;
+  const day = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
+  const s = store(); const key = `quota-${day}`;
+  const q: any = (await s.get(key, { type: "json" })) || {};
+  const used = q[kind] || 0;
+  if (used >= limit) return { ok: false, used, limit };
+  q[kind] = used + 1;
+  await s.setJSON(key, q);
+  return { ok: true, used: used + 1, limit };
+}

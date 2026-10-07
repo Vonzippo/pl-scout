@@ -12,6 +12,8 @@ export default async (req: Request) => {
   const base = new URL(req.url).origin;
   const d = await fetch(`${base}/api/ki/due?n=15`).then((r) => r.json()).catch(() => null);
   if (!d?.due?.length) return json(200, { done: 0, pending: 0, total: d?.total || 0 });
+  const q = await fetch(`${base}/api/ki/quota`, { method: "POST", headers: { "content-type": "application/json", "x-ki-secret": secret }, body: JSON.stringify({ kind: "bot" }) }).then((r) => r.json()).catch(() => null);
+  if (!q?.ok) return json(429, { error: `Tageslimit des KI-Bots erreicht (${q?.limit ?? "?"} Runden) – morgen geht es automatisch weiter.` });
   let ratings = {}, error = "";
   try { ratings = await rateBatch(d.due, key, Netlify.env.get("KI_MODEL") || undefined); }
   catch (e) { error = String((e as Error)?.message || e).slice(0, 200); }
