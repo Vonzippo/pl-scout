@@ -162,6 +162,11 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
         <h2>Liga-Übersicht <span>Klick auf ein Team zeigt den Kader · Prognose = nächste <span id="hzLabel">3</span> Runden</span></h2>
         <table><thead><tr><th class="l">#</th><th class="l">Team</th><th>Bilanz</th><th>Punkte</th><th>Prognose Startelf</th><th>Prognose Kader</th><th>Ø Pkt/90 Startelf</th><th>Ø Score Startelf</th></tr></thead><tbody id="lgBody"></tbody></table>
       </div>
+      <div class="card" id="calibCard" style="margin-bottom:12px" hidden>
+        <h2>Punkte-Kontrolle <span>echte Sleeper-Punkte vs. Berechnung der Seite</span></h2>
+        <div id="calibSummary" class="empty"></div>
+        <div id="calibTable" style="overflow:auto"></div>
+      </div>
       <div class="teamsbar">
         <label>Team <select id="teamA"></select></label>
         <label>vergleichen mit <select id="teamB"><option value="">– niemand –</option></select></label>
@@ -274,7 +279,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 const POS = {1:'GKP',2:'DEF',3:'MID',4:'FWD'};
 const DEFAULT_SCORING = {
   goal_GKP:6, goal_DEF:6, goal_MID:5, goal_FWD:4,
-  assist:3,
+  assist_GKP:3, assist_DEF:3, assist_MID:3, assist_FWD:3,
   cs_GKP:4, cs_DEF:4, cs_MID:1, cs_FWD:0,
   gc_GKP:-0.5, gc_DEF:-0.5,
   save:0.5, pen_save:5, pen_miss:-2,
@@ -283,7 +288,7 @@ const DEFAULT_SCORING = {
 };
 const LABELS = {
   goal_GKP:'Tor (TW)', goal_DEF:'Tor (VER)', goal_MID:'Tor (MIT)', goal_FWD:'Tor (STU)',
-  assist:'Assist', cs_GKP:'Zu-Null (TW)', cs_DEF:'Zu-Null (VER)', cs_MID:'Zu-Null (MIT)', cs_FWD:'Zu-Null (STU)',
+  assist_GKP:'Assist (TW)', assist_DEF:'Assist (VER)', assist_MID:'Assist (MIT)', assist_FWD:'Assist (STU)', cs_GKP:'Zu-Null (TW)', cs_DEF:'Zu-Null (VER)', cs_MID:'Zu-Null (MIT)', cs_FWD:'Zu-Null (STU)',
   gc_GKP:'Gegentor (TW)', gc_DEF:'Gegentor (VER)', save:'Parade', pen_save:'Penalty gehalten', pen_miss:'Penalty verschossen',
   yellow:'Gelbe Karte', red:'Rote Karte', own_goal:'Eigentor', start:'Pro Startelf-Einsatz',
   tackle:'Tackle', cbi:'Klärung/Block/Abfang', recovery:'Ballgewinn'
@@ -328,13 +333,15 @@ function pointsFrom(p, s, useXG){
   const assists = useXG ? p.xa : p.assists;
   let pts = 0;
   pts += goals * (s['goal_'+pos]||0);
-  pts += assists * s.assist;
+  pts += assists * (s['assist_'+pos] ?? 0);
   pts += p.cs * (s['cs_'+pos]||0);
   if(pos==='GKP'||pos==='DEF') pts += (useXG ? p.xgc : p.gc) * (s['gc_'+pos]||0);
   pts += p.saves * s.save + p.penSaved * s.pen_save + p.penMissed * s.pen_miss;
   pts += p.yellow * s.yellow + p.red * s.red + p.ownGoals * s.own_goal;
   pts += p.starts * s.start;
   pts += p.tackles * s.tackle + p.cbi * s.cbi + p.recoveries * s.recovery;
+  const L = s.lr && s.lr[pos];
+  if(L) pts += p.minutes / 90 * L.min + p.xg * L.xg + p.xa * L.xa + p.tackles * L.tk + p.cbi * L.cbi + p.recoveries * L.rec;
   return pts;
 }
 function fixtureFactor(d){ return 1 + (3 - d) * 0.1; }
@@ -411,13 +418,14 @@ function computeXfp(){
     if(p.fkOrder === 1){ xg90 += 0.02; p.setPieces.push('Freistoss'); }
     if(p.cornerOrder === 1){ xa90 += 0.04; p.setPieces.push('Ecken'); }
     const sv90 = p.pos === 'GKP' ? per90(p, 'saves', 'saves') : 0, yc90 = per90(p, 'yellow', 'yellow');
-    const def90 = per90(p, 'tackles', 'tackles') * s.tackle + per90(p, 'cbi', 'cbi') * s.cbi + per90(p, 'recoveries', 'rec') * s.recovery;
-    const G = s['goal_'+p.pos] || 0, CS = s['cs_'+p.pos] || 0, GC = s['gc_'+p.pos] || 0;
+    const LR = (s.lr && s.lr[p.pos]) || { min:0, xg:0, xa:0, tk:0, cbi:0, rec:0 };
+    const def90 = per90(p, 'tackles', 'tackles') * (s.tackle + LR.tk) + per90(p, 'cbi', 'cbi') * (s.cbi + LR.cbi) + per90(p, 'recoveries', 'rec') * (s.recovery + LR.rec) + LR.min;
+    const G = s['goal_'+p.pos] || 0, CS = s['cs_'+p.pos] || 0, GC = s['gc_'+p.pos] || 0, A = s['assist_'+p.pos] || 0;
     const fxAll = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw && f.gw < nextGw + state.horizon);
     const models = fxAll.map(f => ({ f, m: matchSetup(p, f) })).filter(x => x.m);
     const expPts = m => {
       const e90 = p.xMin / 90;
-      return pStart * s.start + e90 * (xg90 * m.k * G + xa90 * m.k * s.assist + sv90 * m.kAg * s.save + yc90 * s.yellow + def90)
+      return pStart * s.start + e90 * (xg90 * m.k * (G + LR.xg) + xa90 * m.k * (A + LR.xa) + sv90 * m.kAg * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-m.lamAg) * CS + e90 * m.lamAg * GC;
     };
     p.proj = models.reduce((t,x) => t + expPts(x.m), 0);
@@ -433,7 +441,8 @@ function computeXfp(){
         if(!min) continue;
         const f90 = min / 90;
         pts += started * s.start;
-        pts += poisson(xg90 * m.k * f90, rnd) * G + poisson(xa90 * m.k * f90, rnd) * s.assist;
+        pts += poisson(xg90 * m.k * f90, rnd) * G + poisson(xa90 * m.k * f90, rnd) * A;
+        pts += (xg90 * LR.xg + xa90 * LR.xa) * m.k * f90;
         const teamGa = poisson(m.lamAg, rnd);
         if(teamGa === 0 && min >= 60) pts += CS;
         if(GC){ let ga = 0; for(let j = 0; j < teamGa; j++) if(rnd() < f90) ga++; pts += ga * GC; }
@@ -485,7 +494,9 @@ function gameLog(p){
     if(!(playedGwByTeam[p.teamId] || {})[gw]) continue; // Klub hatte spielfrei
     const st = (histById[p.id] || {})[gw];
     const q = st ? liveToP(p.pos, st) : liveToP(p.pos, {});
-    out.push({ gw, min:q.minutes, start:q.starts > 0 || q.minutes >= 60, pts: q.minutes > 0 ? pointsFrom(q, scoring, false) : 0 });
+    const calc = q.minutes > 0 ? pointsFrom(q, scoring, false) : 0;
+    const real = sleeper.actual && sleeper.actual[p.id] ? sleeper.actual[p.id][gw] : undefined;
+    out.push({ gw, min:q.minutes, start:q.starts > 0 || q.minutes >= 60, calc, real, pts: real != null ? real : calc });
   }
   return out;
 }
@@ -640,6 +651,133 @@ function scoreHtml(p){
   return `<span class="score ${cls}" title="${esc(label+' — '+tip)}">${p.score}</span>`;
 }
 
+/* ---------- Liga-Punkteregeln & Kalibrierung ---------- */
+// Übernimmt die Sleeper-Wertung (Tor, Assist, Zu-Null, Gegentor, Parade, Karten …) und lernt pro Position,
+// was die FPL-Daten nicht direkt enthalten (Key Passes, Schüsse aufs Tor, Flanken, Luftduelle, Dribblings …),
+// aus den echten Sleeper-Punkten der vergangenen Spieltage.
+const PCODE = { GKP:'gk', DEF:'d', MID:'m', FWD:'f' };
+const LR_KEYS = ['min','xg','xa','tk','cbi','rec'];
+const LR_LABEL = { min:'pro 90 Min. Einsatz (Pässe, Duelle, Flanken …)', xg:'pro xG (Schüsse aufs Tor …)', xa:'pro xA (Key Passes …)', tk:'pro Tackle', cbi:'pro Klärung/Block/Abfang', rec:'pro Ballgewinn' };
+const LR_BOUNDS = { min:[-2,10], xg:[-4,14], xa:[-4,18], tk:[-1,3], cbi:[-1,3], rec:[-1,2] };
+let calib = null;
+function leagueScoring(ss){
+  const g = (pos, k, d = 0) => { const v = ss[`pos_${PCODE[pos]}_${k}`]; return v == null ? d : +v; };
+  const s = { start:0, tackle:g('MID','tkw'), cbi:0.4, recovery:0, save:g('GKP','sv'), pen_save:g('GKP','pks'),
+    pen_miss:g('MID','pkm'), yellow:g('MID','yc'), red:g('MID','rc'), own_goal:g('MID','og') };
+  for(const pos of ['GKP','DEF','MID','FWD']){
+    s['goal_'+pos] = g(pos,'g'); s['assist_'+pos] = g(pos,'at'); s['cs_'+pos] = g(pos,'cs'); s['gc_'+pos] = g(pos,'ga');
+  }
+  return s;
+}
+function solveLin(A, b){
+  const n = b.length, M = A.map((r,i) => [...r, b[i]]);
+  for(let c = 0; c < n; c++){
+    let piv = c; for(let r = c+1; r < n; r++) if(Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    if(Math.abs(M[c][c]) < 1e-9) continue;
+    for(let r = 0; r < n; r++){ if(r === c) continue; const f = M[r][c] / M[c][c]; for(let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r,i) => Math.abs(r[i]) < 1e-9 ? 0 : r[n] / r[i]);
+}
+function ridgeFit(rows, lambda){
+  const k = LR_KEYS.length, A = Array.from({length:k}, () => new Array(k).fill(0)), b = new Array(k).fill(0);
+  for(const r of rows){ for(let i = 0; i < k; i++){ b[i] += r.x[i] * r.res; for(let j = 0; j < k; j++) A[i][j] += r.x[i] * r.x[j]; } }
+  for(let i = 0; i < k; i++) A[i][i] += lambda;
+  const c = solveLin(A, b), out = {};
+  LR_KEYS.forEach((key, i) => { const [lo, hi] = LR_BOUNDS[key]; out[key] = Math.max(lo, Math.min(hi, c[i] || 0)); });
+  return out;
+}
+const mae = (arr, f) => arr.length ? arr.reduce((t,r) => t + Math.abs(f(r) - r.y), 0) / arr.length : 0;
+function corr(arr, f){
+  const n = arr.length; if(n < 3) return 0;
+  const xs = arr.map(f), ys = arr.map(r => r.y), mx = xs.reduce((a,b)=>a+b,0)/n, my = ys.reduce((a,b)=>a+b,0)/n;
+  let sxy = 0, sxx = 0, syy = 0; for(let i = 0; i < n; i++){ sxy += (xs[i]-mx)*(ys[i]-my); sxx += (xs[i]-mx)**2; syy += (ys[i]-my)**2; }
+  return sxx && syy ? sxy / Math.sqrt(sxx*syy) : 0;
+}
+let calibRunning = false;
+async function calibrate(){
+  if(calibRunning || sleeper.calibrated || !sleeper.scoringSettings || !histById || !sleeper.matchPid) return;
+  if(!('pos_m_g' in sleeper.scoringSettings)) { sleeper.calibrated = true; return; } // keine Fussball-Wertung → Standardregeln behalten
+  calibRunning = true;
+  try {
+    const prev = scoring, base = leagueScoring(sleeper.scoringSettings), gws = histById.__gws;
+    const res = await Promise.allSettled(gws.map(w => getJSON(`/api/sleeper/league/${sleeper.leagueId}/matchups/${w}`)));
+    const actual = {};
+    res.forEach((r, i) => {
+      if(r.status !== 'fulfilled') return;
+      for(const m of r.value || []) for(const [pid, pts] of Object.entries(m.players_points || {})){
+        const fid = sleeper.matchPid(pid); if(fid == null) continue;
+        (actual[fid] ||= {})[gws[i]] = +pts;
+      }
+    });
+    const byId = Object.fromEntries(players.map(p => [p.id, p]));
+    const rows = [];
+    for(const [fid, wk] of Object.entries(actual)){
+      const p = byId[fid]; if(!p) continue;
+      for(const [gw, y] of Object.entries(wk)){
+        const st = (histById[fid] || {})[gw]; if(!st || !num(st.minutes)) continue;
+        const q = liveToP(p.pos, st);
+        const known = pointsFrom(q, base, false);
+        rows.push({ pos:p.pos, id:+fid, gw:+gw, y, known, res: y - known, before: pointsFrom(q, prev, false), q,
+          x:[q.minutes/90, q.xg, q.xa, q.tackles, q.cbi, q.recoveries] });
+      }
+    }
+    if(rows.length < 20){ sleeper.calibrated = true; return; }
+    const pooled = ridgeFit(rows, 4), lr = {};
+    for(const pos of ['GKP','DEF','MID','FWD']){
+      const rp = rows.filter(r => r.pos === pos);
+      lr[pos] = rp.length >= 15 ? ridgeFit(rp, 4) : pooled;
+    }
+    const s = { ...base, lr };
+    for(const r of rows) r.after = pointsFrom(r.q, s, false);
+    calib = { n: rows.length, gws, before: mae(rows, r => r.before), rulesOnly: mae(rows, r => r.known), after: mae(rows, r => r.after),
+      rBefore: corr(rows, r => r.before), rAfter: corr(rows, r => r.after), lr,
+      byPos: Object.fromEntries(['GKP','DEF','MID','FWD'].map(pos => { const rp = rows.filter(r => r.pos === pos); return [pos, { n: rp.length, mae: mae(rp, r => r.after) }]; })),
+      rows };
+    scoring = s; sleeper.actual = actual; sleeper.calibrated = true;
+    try { window.__plscoutCalib = calib; } catch(e){}
+    renderScoring(); renderAll();
+    const cur = $('status').textContent.replace(/ · Punkte.*$/, '');
+    setStatus(`${cur} · Punkte auf Liga-Regeln kalibriert (Ø Abweichung ${fmt(calib.after,1)} Pkt/Spiel statt ${fmt(calib.before,1)})`);
+  } catch(e){ console.warn('Kalibrierung', e); }
+  finally { calibRunning = false; }
+}
+function renderCalib(){
+  const card = $('calibCard'); if(!card) return;
+  if(!calib){ card.hidden = true; return; }
+  card.hidden = false;
+  const P = { GKP:'TW', DEF:'VER', MID:'MIT', FWD:'STU' };
+  $('calibSummary').innerHTML = `
+    <p>Grundlage: <b>${calib.n}</b> echte Einsätze aus GW ${calib.gws[0]}–${calib.gws[calib.gws.length-1]} (Sleeper-Punkte aller Kaderspieler der Liga).</p>
+    <p>Durchschnittliche Abweichung pro Spieler und Spiel: <b style="color:var(--bad)">${fmt(calib.before,1)}</b> (alte Standard-Regeln) → ${fmt(calib.rulesOnly,1)} (nur Liga-Regeln) → <b style="color:var(--accent)">${fmt(calib.after,1)} Punkte</b> (Liga-Regeln + gelernte Zusatzwerte). Übereinstimmung (Korrelation): ${fmt(calib.rBefore,2)} → <b>${fmt(calib.rAfter,2)}</b>.</p>
+    <details><summary class="empty" style="cursor:pointer">Gelernte Zusatzwerte je Position (für Stats, die nur Sleeper zählt)</summary>
+    <table class="mdt"><tbody><tr><th>Wert</th>${Object.keys(P).map(k=>`<th>${P[k]} (n=${calib.byPos[k].n})</th>`).join('')}</tr>
+    ${LR_KEYS.map(k => `<tr><td>${LR_LABEL[k]}</td>${Object.keys(P).map(pos => `<td>${(calib.lr[pos][k] >= 0 ? '+' : '') + fmt(calib.lr[pos][k], 2)}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></details>`;
+  // Kader des gewählten Teams: echte vs. berechnete Punkte pro Spieltag
+  const r = sleeper.rosters.find(x => x.owner === teamA);
+  if(!r){ $('calibTable').innerHTML = ''; return; }
+  const gws = calib.gws, byFid = {};
+  for(const row of calib.rows) (byFid[row.id] ||= {})[row.gw] = row;
+  const lines = r.players.map(pid => {
+    const fid = sleeper.fplBySleeper[pid]; const p = fid != null ? players.find(x => x.id === fid) : null;
+    const act = (sleeper.actual || {})[fid] || {};
+    let sa = 0, sc = 0;
+    const cells = gws.map(gw => {
+      const a = act[gw], row = (byFid[fid] || {})[gw];
+      const c = row ? row.after : (p && histById && (histById[fid]||{})[gw] ? pointsFrom(liveToP(p.pos, histById[fid][gw]), scoring, false) : null);
+      if(a != null) sa += a; if(c != null) sc += c;
+      if(a == null && c == null) return '<td style="color:var(--muted)">–</td>';
+      const d = (a ?? 0) - (c ?? 0);
+      return `<td title="echt ${fmt(a,1)} / berechnet ${fmt(c,1)}">${a != null ? fmt(a,1) : '–'} <span style="color:${Math.abs(d) > 4 ? 'var(--warn)' : 'var(--muted)'};font-size:11px">(${c != null ? fmt(c,1) : '–'})</span></td>`;
+    }).join('');
+    return { name: p ? p.name : (sleeper.sp[pid]?.name || pid), pos: p ? p.pos : (sleeper.sp[pid]?.pos || ''), sa, sc, html: cells };
+  }).sort((a,b) => b.sa - a.sa);
+  $('calibTable').innerHTML = `<table class="mdt" style="width:100%"><tbody><tr><th>Spieler (${esc(sleeper.users[teamA]||'')})</th>${gws.map(g=>`<th>GW${g}</th>`).join('')}<th>Σ echt</th><th>Σ berechnet</th></tr>` +
+    lines.map(l => `<tr><td><span class="pos ${l.pos}">${l.pos}</span> ${esc(l.name)}</td>${l.html}<td><b>${fmt(l.sa,1)}</b></td><td>${fmt(l.sc,1)}</td></tr>`).join('') +
+    `</tbody></table><div class="empty" style="margin-top:6px">Format: echte Sleeper-Punkte (Berechnung der Seite). Orange = Abweichung über 4 Punkte.</div>`;
+}
+
 /* ---------- Daten laden ---------- */
 async function loadFPL(){
   const [boot, fixtures] = await Promise.all([
@@ -729,14 +867,12 @@ async function loadSleeper(leagueId){
     return norm(t.short)===st || norm(t.name).startsWith(st);
   };
   sleeper.ownerByFpl = {}; sleeper.fplBySleeper = {}; sleeper.sp = {}; sleeper.slByFpl = {};
-  let matched = 0, total = 0;
-  for(const [pid, owner] of Object.entries(ownerBySleeper)){
-    total++;
-    const s = sp[pid];
-    if(!s) continue;
+  const matchCache = {};
+  const matchPid = pid => {
+    if(pid in matchCache) return matchCache[pid];
+    const s = sp[pid]; if(!s) return (matchCache[pid] = null);
     const abbr = s.team_abbr || (isNaN(+s.team) ? s.team : '');
     const spos = SPOS[(s.fantasy_positions||[])[0] || s.position] || '';
-    sleeper.sp[pid] = { name: s.full_name || `${s.first_name||''} ${s.last_name||''}`.trim(), abbr, pos: spos, injury: s.injury_status || '' };
     const full = norm(s.full_name || `${s.first_name||''} ${s.last_name||''}`);
     const last = norm(s.last_name || full.split(' ').pop());
     const pool = new Set([...(byFull[full]||[]), ...(byLast[last]||[]), ...(byLast[full]||[])]);
@@ -749,13 +885,24 @@ async function loadSleeper(leagueId){
       if(spos && c.pos===spos) sc += 1;
       if(sc > bestScore){ best = c; bestScore = sc; }
     }
-    // Nur Nachnamen-Treffer ohne Klub-Übereinstimmung sind zu unsicher
-    if(best && (bestScore >= 4 || pool.size === 1)){
-      sleeper.ownerByFpl[best.id] = owner; sleeper.fplBySleeper[pid] = best.id; matched++;
-      if(s.injury_status) (sleeper.slByFpl ||= {})[best.id] = String(s.injury_status);
+    return (matchCache[pid] = best && (bestScore >= 4 || pool.size === 1) ? best.id : null);
+  };
+  sleeper.matchPid = matchPid;
+  sleeper.leagueId = leagueId; sleeper.scoringSettings = league.scoring_settings || null; sleeper.calibrated = false;
+  let matched = 0, total = 0;
+  for(const [pid, owner] of Object.entries(ownerBySleeper)){
+    total++;
+    const s = sp[pid];
+    if(!s) continue;
+    const abbr = s.team_abbr || (isNaN(+s.team) ? s.team : '');
+    const spos = SPOS[(s.fantasy_positions||[])[0] || s.position] || '';
+    sleeper.sp[pid] = { name: s.full_name || `${s.first_name||''} ${s.last_name||''}`.trim(), abbr, pos: spos, injury: s.injury_status || '' };
+    const fid = matchPid(pid);
+    if(fid != null){
+      sleeper.ownerByFpl[fid] = owner; sleeper.fplBySleeper[pid] = fid; matched++;
+      if(s.injury_status) (sleeper.slByFpl ||= {})[fid] = String(s.injury_status);
     }
   }
-
   // "ich bin"-Auswahl
   const sel = $('meSel');
   sel.innerHTML = '<option value="">– ich bin … –</option>' +
@@ -974,6 +1121,7 @@ function renderTeams(){
   const shown = [teamA, teamB].filter(Boolean).map(o => sleeper.rosters.find(r=>r.owner===o)).filter(Boolean);
   $('rosters').className = 'rostergrid' + (shown.length>1 ? ' two' : '');
   $('rosters').innerHTML = shown.map(rosterCard).join('');
+  renderCalib();
 }
 function rosterCard(r){
   const t = teamStats(r);
@@ -1018,7 +1166,7 @@ function buildPrompt(question){
   out.push(`Ich spiele Fantasy-Fussball in einer Sleeper-Liga (englische Premier League). Heute ist ${new Date().toLocaleDateString('de-CH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}.`);
   out.push(`\nMEINE FRAGE: ${question}`);
   out.push(`\nBitte nutze die Websuche für aktuelle Verletzungen, Sperren, Pressekonferenzen und voraussichtliche Aufstellungen, und kombiniere das mit meinen Daten unten. Gib konkrete Empfehlungen mit kurzer Begründung. Empfiehl nur Spieler aus meinem Kader oder freie Spieler. Antworte auf Deutsch (Schweizer Rechtschreibung).`);
-  const rules = Object.entries(scoring).filter(([k,v]) => v).map(([k,v]) => `${LABELS[k]} ${v>0?'+':''}${v}`).join(', ');
+  const rules = Object.entries(scoring).filter(([k,v]) => typeof v === 'number' && v && LABELS[k]).map(([k,v]) => `${LABELS[k]} ${v>0?'+':''}${v}`).join(', ');
   out.push(`\nMEINE DATEN (Saisonstats aus der offiziellen FPL-API; nächster Spieltag GW ${nextGw}; Progn. = erwartete Punkte nach meinen Regeln in den nächsten ${state.horizon} Runden; Gegner(H/A + Schwierigkeit 1 leicht – 5 schwer); T=Tore, A=Assists, ZN=Zu-Null)`);
   out.push(`Punkteregeln: ${rules}`);
   out.push(`SCORE = eigener PL-Scout-Score 0–100 (Bausteine je 0–100, im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). Ø L10/L3 = Punkte pro Spiel nach meinen Regeln in den letzten 10/3 Spielen; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
@@ -1148,8 +1296,10 @@ function renderScoreWeights(){
     `<label>${SCORE_LABELS[k]}<input type="number" min="0" max="100" step="5" data-sw="${k}" value="${scoreW[k]}"></label>`).join('');
 }
 function renderScoring(){
-  $('scoring').innerHTML = Object.keys(DEFAULT_SCORING).map(k =>
-    `<label>${LABELS[k]}<input type="number" step="0.1" data-sk="${k}" value="${scoring[k]}"></label>`).join('');
+  const league = !!scoring.lr;
+  $('scoring').innerHTML = (league ? '<div class="empty" style="grid-column:1/-1">✅ Aktiv: <b>Punkteregeln eurer Sleeper-Liga</b>, automatisch übernommen und an den echten Punkten kalibriert (Details unter Teams → Punkte-Kontrolle).</div>' : '') +
+    Object.keys(DEFAULT_SCORING).map(k =>
+    `<label>${LABELS[k]}<input type="number" step="0.1" data-sk="${k}" value="${scoring[k] ?? 0}" ${league ? 'disabled' : ''}></label>`).join('');
 }
 function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); refreshPreview(); }
 
@@ -1195,6 +1345,7 @@ async function doLoadLeague(){
   try {
     await loadSleeper(id);
     setTimeout(sendWatchlist, 1500);
+    calibrate();
     const u = new URL(location.href); u.searchParams.set('league', id);
     if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me');
     history.replaceState(null,'',u);
@@ -1241,6 +1392,7 @@ $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeagu
     loadKi().then(renderAll);
     loadHistory().then(() => {
       renderAll();
+      calibrate();
       setTimeout(sendWatchlist, 3000);
       if(!/Liga/.test($('status').textContent)) setStatus(`${players.length} Spieler geladen · Form aus ${histById.__gws.length} Spieltagen.`);
     }).catch(e => console.warn('Formdaten', e));
