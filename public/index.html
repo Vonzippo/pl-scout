@@ -137,6 +137,11 @@ input.need{border-color:var(--warn);outline:2px solid var(--warn)}
 .kibar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 10px}
 .kibar button{font-size:12px;padding:5px 10px}
 .kitext{font-size:12px;color:var(--muted);white-space:normal;max-width:260px;text-align:left}
+/* Zeile antippen = markieren */
+table{touch-action:manipulation}
+tbody tr{cursor:pointer;-webkit-tap-highlight-color:transparent}
+tbody tr.hl td{background:rgba(255,200,60,.22)!important;color:var(--text)}
+tbody tr.hl td:first-child{box-shadow:inset 4px 0 0 #ffc83c}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -305,7 +310,7 @@ let playedGwByTeam = {}, finishedGws = [], histById = null;
 let sleeper = { ownerByFpl: {}, fplBySleeper: {}, users: {}, me: '', rosters: [], sp: {} };
 const SPOS = {GK:'GKP',G:'GKP',D:'DEF',M:'MID',F:'FWD'};
 let view = 'players', teamA = '', teamB = '';
-const state = { q:'', pos:'', team:'', avail:'', minMin:270, horizon:3, fitOnly:false, sort:'score', dir:-1, selected:new Set() };
+const state = { hlPid:null, hlOwner:null, q:'', pos:'', team:'', avail:'', minMin:270, horizon:3, fitOnly:false, sort:'score', dir:-1, selected:new Set() };
 
 const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
@@ -1006,7 +1011,7 @@ function renderTable(){
     const o = ownerOf(p);
     const cls = [state.selected.has(p.id)?'sel':'', (o && o===sleeper.me)?'mine':''].join(' ');
     const news = p.news ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
-    return `<tr class="${cls}">
+    return `<tr class="${cls}${state.hlPid===p.id?' hl':''}" data-pid="${p.id}">
       <td class="l"><input type="checkbox" data-id="${p.id}" ${state.selected.has(p.id)?'checked':''}></td>
       <td class="l"><span class="pname">${esc(p.name)}</span> ${news}${spHtml(p)}</td>
       <td class="l">${esc(teams[p.teamId].short)}</td>
@@ -1107,7 +1112,7 @@ function renderTeams(){
   const list = sleeper.rosters.map(r => ({ r, t: teamStats(r) }))
     .sort((a,b) => (b.r.st.wins||0)-(a.r.st.wins||0) || b.t.fpts-a.t.fpts || b.t.projStart-a.t.projStart);
   const maxProj = Math.max(...list.map(x=>x.t.projStart));
-  $('lgBody').innerHTML = list.map((x,i) => `<tr class="click ${x.r.owner===sleeper.me?'me':''}" data-owner="${esc(x.r.owner)}">
+  $('lgBody').innerHTML = list.map((x,i) => `<tr class="click ${x.r.owner===sleeper.me?'me':''}${state.hlOwner===x.r.owner?' hl':''}" data-owner="${esc(x.r.owner)}">
     <td class="l">${i+1}</td><td class="l">${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''}</td>
     <td>${x.t.rec}</td><td>${fmt(x.t.fpts,1)}</td>
     <td class="mono ${x.t.projStart===maxProj?'big':''}">${fmt(x.t.projStart)}</td>
@@ -1129,7 +1134,7 @@ function rosterCard(r){
     const p = x.p;
     const inj = (p && p.news) ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>`
               : (x.injury ? `<span class="news bad" title="${esc(x.injury)}">⚠</span>` : '');
-    return `<tr class="${cls}">
+    return `<tr class="${cls}${p && state.hlPid===p.id?' hl':''}"${p ? ` data-pid="${p.id}"` : ''}>
       <td class="l"><span class="pos ${x.pos}">${x.pos}</span></td>
       <td class="l"><span class="pname">${esc(x.name)}</span> ${inj}</td>
       <td class="l">${esc(x.club)}</td>
@@ -1354,6 +1359,23 @@ async function doLoadLeague(){
 }
 $('loadLeague').addEventListener('click', doLoadLeague);
 $('kiRun').addEventListener('click', runKiNow);
+// Zeile antippen/anklicken markiert sie sofort (Spieler werden in allen Tabellen mitmarkiert)
+document.addEventListener('click', e => {
+  if(e.target.closest('input,button,a,select,summary,label')) return;
+  const tr = e.target.closest('tbody tr'); if(!tr || tr.querySelector('th')) return;
+  const pid = tr.dataset.pid, owner = tr.dataset.owner;
+  if(owner != null){
+    state.hlOwner = state.hlOwner === owner ? null : owner;
+    document.querySelectorAll('#lgBody tr').forEach(r => r.classList.toggle('hl', r.dataset.owner === state.hlOwner));
+  } else if(pid != null){
+    state.hlPid = state.hlPid === +pid ? null : +pid;
+    document.querySelectorAll('tbody tr[data-pid]').forEach(r => r.classList.toggle('hl', +r.dataset.pid === state.hlPid));
+  } else {
+    const on = !tr.classList.contains('hl');
+    tr.parentElement.querySelectorAll('tr.hl').forEach(r => r.classList.remove('hl'));
+    tr.classList.toggle('hl', on);
+  }
+}, true); // Capture-Phase: läuft vor Handlern, die die Tabelle neu aufbauen
 $('chips').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; $('chatIn').value = b.dataset.q; refreshPreview(); askCoach(); });
 $('askBtn').addEventListener('click', () => askCoach());
 $('chatIn').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); askCoach(); } });
