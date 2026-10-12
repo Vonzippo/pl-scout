@@ -142,6 +142,21 @@ table{touch-action:manipulation}
 tbody tr{cursor:pointer;-webkit-tap-highlight-color:transparent}
 tbody tr.hl td{background:rgba(255,200,60,.22)!important;color:var(--text)}
 tbody tr.hl td:first-child{box-shadow:inset 4px 0 0 #ffc83c}
+.p-GKP{color:#ffd166}.p-DEF{color:#37e39b}.p-MID{color:#5aa9ff}.p-FWD{color:#ff7a8a}
+.pname.p-GKP,.pname.p-DEF,.pname.p-MID,.pname.p-FWD{font-weight:700}
+td .nm{white-space:nowrap}
+td .sub{font-size:11px;color:var(--muted);margin-top:2px;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.fdr.sm span{font-size:9px;padding:1px 3px;min-width:0}
+td.muted{color:var(--muted)}
+/* erste Spalte (Name) bleibt beim seitlichen Scrollen stehen */
+#tbody td:first-child,#thead th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}
+#thead th:first-child{z-index:3;background:var(--panel2)}
+#tbody tr.hl td:first-child{background:#3a3420!important}
+#tbody tr.mine td:first-child{background:#18253a}
+.collist{list-style:none;margin:0 0 10px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+.collist li{display:flex;justify-content:space-between;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+.collist button{padding:2px 8px;margin-left:4px}
+#cmpPill{position:fixed;right:16px;bottom:16px;z-index:20;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -225,11 +240,27 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <label>Min. Minuten <input id="minMin" type="number" value="270" min="0" step="90" style="width:80px"></label>
     <label>Prognose für <select id="horizon"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> Runden</label>
     <label><input type="checkbox" id="fitOnly"> nur fit</label>
+    <button class="ghost" id="colBtn">⚙️ Spalten</button>
   </div>
 
+  <div class="card" id="colPanel" hidden style="margin-bottom:12px">
+    <h2>Spalten anpassen <span>Häkchen = anzeigen · ↑↓ = Reihenfolge · wird gespeichert</span></h2>
+    <ul id="colList" class="collist"></ul>
+    <button class="ghost" id="colReset">Standard wiederherstellen</button>
+  </div>
+  <div class="kibar"><span id="kiStatus">🤖 KI-Bot: lädt …</span><button class="ghost" id="kiRun" title="Bewertet die fälligen Spieler sofort (sonst automatisch alle 10 Minuten)">Jetzt bewerten</button></div>
+  <div class="legend">PL-Scout-Score: <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine · Namensfarbe = Position: <b class="p-GKP">TW</b> <b class="p-DEF">VER</b> <b class="p-MID">MIT</b> <b class="p-FWD">STU</b></div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="status" id="count"></div>
+  <button id="cmpPill" class="primary" hidden>⇄ Vergleich</button>
   <div class="grid2">
     <div class="card cmp" id="cmpCard">
-      <h2>Vergleich <span>Haken in der Tabelle setzen (max. 4)</span></h2>
+      <h2>Vergleich <span>Spieler in der Tabelle antippen (max. 4)</span></h2>
       <div id="cmp" class="empty">Noch keine Spieler ausgewählt.</div>
     </div>
     <div class="card">
@@ -266,15 +297,6 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     </div>
   </details>
 
-  <div class="kibar"><span id="kiStatus">🤖 KI-Bot: lädt …</span><button class="ghost" id="kiRun" title="Bewertet die fälligen Spieler sofort (sonst automatisch alle 10 Minuten)">Jetzt bewerten</button></div>
-  <div class="legend">PL-Scout-Score: <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine</div>
-  <div class="tablewrap">
-    <table>
-      <thead><tr id="thead"></tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
-  <div class="status" id="count"></div>
   </section>
 </main>
 <footer>Daten: offizielle Fantasy Premier League API (Stats & Spielplan) und Sleeper API (Liga & Kader). Prognose = eigene Punkteregeln × Einsatzminuten × Gegnerstärke – eine Orientierung, keine Garantie.</footer>
@@ -927,30 +949,44 @@ async function loadSleeper(leagueId){
 }
 
 /* ---------- Darstellung ---------- */
-const COLS = [
-  {k:'sel', t:'', l:true, nosort:true},
-  {k:'name', t:'Spieler', l:true},
-  {k:'team', t:'Klub', l:true},
-  {k:'pos', t:'Pos', l:true},
-  {k:'owner', t:'Besitzer', l:true},
-  {k:'score', t:'Score'},
-  {k:'ki', t:'KI'},
-  {k:'xfp', t:'xFP'},
-  {k:'ceil', t:'Floor–Ceil'},
-  {k:'xMin', t:'xMin'},
-  {k:'minutes', t:'Min'},
-  {k:'goals', t:'T'},
-  {k:'assists', t:'A'},
-  {k:'xg', t:'xG'},
-  {k:'xa', t:'xA'},
-  {k:'l10', t:'Ø L10'},
-  {k:'minL5', t:'Min L5'},
-  {k:'pts', t:'Pkt'},
-  {k:'pts90', t:'Pkt/90'},
-  {k:'xpts90', t:'xPkt/90'},
-  {k:'proj', t:'xFP Σ'},
-  {k:'fdr', t:'Nächste Gegner', l:true, nosort:true},
+// Spalten der Spieler-Tabelle: Reihenfolge und Sichtbarkeit wählbar (⚙️ Spalten)
+const COLDEFS = [
+  {k:'name',   t:'Spieler', l:true, fixed:true, cell:p => nameCell(p)},
+  {k:'score',  t:'Score',   cell:p => scoreHtml(p)},
+  {k:'xfp',    t:'xFP',     cls:'big mono', cell:p => fmt(p.xfp,1)},
+  {k:'ki',     t:'KI',      cell:p => kiHtml(p)},
+  {k:'owner',  t:'Besitzer', l:true, cell:p => ownerLabel(p)},
+  {k:'ceil',   t:'Floor–Ceil', cls:'mono muted', cell:p => `${fmt(p.floor,0)}–${fmt(p.ceil,0)}`},
+  {k:'xMin',   t:'xMin',    cls:'mono', cell:p => `<span title="Startwahrscheinlichkeit ${Math.round((p.pStart||0)*100)}%">${Math.round(p.xMin||0)}</span>`},
+  {k:'l10',    t:'Ø L10',   cell:p => `${fmt(p.l10,1)} ${sparkHtml(p)}`},
+  {k:'minL5',  t:'Min L5',  cell:p => Math.round(p.minL5)},
+  {k:'proj',   t:'xFP Σ',   cls:'mono', cell:p => fmt(p.proj,1)},
+  {k:'minutes',t:'Min',     cell:p => p.minutes},
+  {k:'goals',  t:'T',       cell:p => p.goals},
+  {k:'assists',t:'A',       cell:p => p.assists},
+  {k:'xg',     t:'xG',      cell:p => fmt(p.xg)},
+  {k:'xa',     t:'xA',      cell:p => fmt(p.xa)},
+  {k:'pts',    t:'Pkt',     cell:p => fmt(p.pts,0)},
+  {k:'pts90',  t:'Pkt/90',  cls:'mono', cell:p => fmt(p.pts90,2)},
+  {k:'xpts90', t:'xPkt/90', cls:'mono', cell:p => fmt(p.xpts90,2)},
 ];
+const COL_DEFAULT_ORDER = COLDEFS.map(c => c.k);
+let colCfg = (() => {
+  const c = store.get('cols') || {};
+  const order = (c.order || []).filter(k => COL_DEFAULT_ORDER.includes(k));
+  for(const k of COL_DEFAULT_ORDER) if(!order.includes(k)) order.push(k);
+  return { order, hidden: (c.hidden || []).filter(k => k !== 'name') };
+})();
+function activeCols(){
+  return colCfg.order.filter(k => !colCfg.hidden.includes(k)).map(k => COLDEFS.find(c => c.k === k));
+}
+const COLS = COLDEFS; // für Sortier-Logik
+function nameCell(p){
+  const news = p.news ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
+  const opp = (p.next||[]).slice(0,3).map(f => `<span class="d${f.d}" title="GW ${f.gw}">${esc(teams[f.opp]?.short||'?')}${f.home?'':'(a)'}</span>`).join('');
+  return `<div class="nm"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}</div>
+    <div class="sub"><b>${esc(teams[p.teamId].short)}</b><span class="fdr sm">${opp}</span></div>`;
+}
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
 function ownerLabel(p){
   if(!Object.keys(sleeper.users).length) return '';
@@ -998,7 +1034,7 @@ function fdrHtml(p){
     `<span class="d${f.d}" title="GW ${f.gw}">${esc(teams[f.opp]?.short||'?')}${f.home?'':' (a)'}</span>`).join('') + '</span>';
 }
 function renderHead(){
-  $('thead').innerHTML = COLS.map(c =>
+  $('thead').innerHTML = activeCols().map(c =>
     `<th class="${c.l?'l':''} ${state.sort===c.k?'sorted':''}" data-k="${c.k}">${c.t}${state.sort===c.k?(state.dir<0?' ▾':' ▴'):''}</th>`).join('');
 }
 function renderTable(){
@@ -1006,31 +1042,32 @@ function renderTable(){
     const va = sortVal(a,state.sort), vb = sortVal(b,state.sort);
     return (va>vb?1:va<vb?-1:0) * state.dir;
   });
-  const shown = rows.slice(0, 400);
+  const shown = rows.slice(0, 400), cols = activeCols();
   $('tbody').innerHTML = shown.map(p => {
     const o = ownerOf(p);
-    const cls = [state.selected.has(p.id)?'sel':'', (o && o===sleeper.me)?'mine':''].join(' ');
-    const news = p.news ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
-    return `<tr class="${cls}${state.hlPid===p.id?' hl':''}" data-pid="${p.id}">
-      <td class="l"><input type="checkbox" data-id="${p.id}" ${state.selected.has(p.id)?'checked':''}></td>
-      <td class="l"><span class="pname">${esc(p.name)}</span> ${news}${spHtml(p)}</td>
-      <td class="l">${esc(teams[p.teamId].short)}</td>
-      <td class="l"><span class="pos ${p.pos}">${p.pos}</span></td>
-      <td class="l">${ownerLabel(p)}</td>
-      <td>${scoreHtml(p)}</td>
-      <td>${kiHtml(p)}</td>
-      <td class="big mono">${fmt(p.xfp,1)}</td>
-      <td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td>
-      <td class="mono" title="Startwahrscheinlichkeit ${Math.round((p.pStart||0)*100)}%">${Math.round(p.xMin||0)}</td>
-      <td>${p.minutes}</td><td>${p.goals}</td><td>${p.assists}</td>
-      <td>${fmt(p.xg)}</td><td>${fmt(p.xa)}</td>
-      <td>${fmt(p.l10,1)} ${sparkHtml(p)}</td><td>${Math.round(p.minL5)}</td><td>${fmt(p.pts,0)}</td>
-      <td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.xpts90,2)}</td>
-      <td class="mono">${fmt(p.proj,1)}</td>
-      <td class="l">${fdrHtml(p)}</td>
-    </tr>`;
+    const cls = [state.selected.has(p.id)?'hl':'', (o && o===sleeper.me)?'mine':''].join(' ');
+    return `<tr class="${cls}" data-pid="${p.id}">${cols.map(c => `<td class="${c.l?'l':''} ${c.cls||''}">${c.cell(p)}</td>`).join('')}</tr>`;
   }).join('');
-  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario (15./85. Perzentil) · xMin = erwartete Minuten · xFP Σ = nächste ${state.horizon} Runden`;
+  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · xFP Σ = nächste ${state.horizon} Runden`;
+  renderCmpPill();
+}
+function renderColPanel(){
+  $('colList').innerHTML = colCfg.order.map((k, i) => {
+    const c = COLDEFS.find(x => x.k === k);
+    return `<li data-k="${k}"><label><input type="checkbox" data-colvis="${k}" ${colCfg.hidden.includes(k)?'':'checked'} ${c.fixed?'disabled':''}> ${c.t}</label>
+      <span><button class="ghost" data-colmv="-1" ${i===0?'disabled':''} title="nach vorne">↑</button><button class="ghost" data-colmv="1" ${i===colCfg.order.length-1?'disabled':''} title="nach hinten">↓</button></span></li>`;
+  }).join('');
+}
+function saveCols(){ store.set('cols', colCfg); renderColPanel(); renderHead(); renderTable(); }
+function renderCmpPill(){
+  const n = state.selected.size, el = $('cmpPill'); if(!el) return;
+  el.hidden = !n; el.textContent = `⇄ Vergleich (${n})`;
+}
+function toggleSelect(pid){
+  if(state.selected.has(pid)) state.selected.delete(pid);
+  else { state.selected.add(pid); if(state.selected.size > 4){ const first = state.selected.values().next().value; state.selected.delete(first); } }
+  document.querySelectorAll('tbody tr[data-pid]').forEach(r => r.classList.toggle('hl', state.selected.has(+r.dataset.pid)));
+  renderCompare(); renderCmpPill();
 }
 function renderCompare(){
   const sel = players.filter(p => state.selected.has(p.id));
@@ -1134,22 +1171,20 @@ function rosterCard(r){
     const p = x.p;
     const inj = (p && p.news) ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>`
               : (x.injury ? `<span class="news bad" title="${esc(x.injury)}">⚠</span>` : '');
-    return `<tr class="${cls}${p && state.hlPid===p.id?' hl':''}"${p ? ` data-pid="${p.id}"` : ''}>
-      <td class="l"><span class="pos ${x.pos}">${x.pos}</span></td>
-      <td class="l"><span class="pname">${esc(x.name)}</span> ${inj}</td>
-      <td class="l">${esc(x.club)}</td>
-      ${p ? `<td>${scoreHtml(p)}</td><td>${kiHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.proj)}</td><td class="l">${fdrHtml(p)}</td>`
-          : `<td colspan="9" class="l nodata">keine Stats zugeordnet</td>`}
+    return `<tr class="${cls}${p && state.selected.has(p.id)?' hl':''}"${p ? ` data-pid="${p.id}"` : ''}>
+      <td class="l">${p ? nameCell(p) : `<div class="nm"><span class="pname p-${x.pos}">${esc(x.name)}</span> ${inj}</div><div class="sub"><b>${esc(x.club)}</b></div>`}</td>
+      ${p ? `<td>${scoreHtml(p)}</td><td>${kiHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.proj)}</td>`
+          : `<td colspan="8" class="l nodata">keine Stats zugeordnet</td>`}
     </tr>`;
   };
-  const head = `<tr><th class="l">Pos</th><th class="l">Spieler</th><th class="l">Klub</th><th>Score</th><th>KI</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>xFP Σ</th><th class="l">Nächste Gegner</th></tr>`;
+  const head = `<tr><th class="l">Spieler</th><th>Score</th><th>KI</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>xFP Σ</th></tr>`;
   return `<div class="card roster">
     <div class="teamhead"><h3>${esc(sleeper.users[r.owner]||'?')}${r.owner===sleeper.me?' (du)':''}</h3>
       <div class="kpis"><div><b>${t.rec}</b>Bilanz</div><div><b>${fmt(t.fpts,1)}</b>Punkte</div><div><b>${fmt(t.projStart)}</b>Prognose Startelf</div></div></div>
     <table><thead>${head}</thead><tbody>
-      <tr class="sect"><td colspan="12">Startelf (${t.starters.length})</td></tr>
-      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="12" class="l nodata">Keine Startelf gesetzt</td></tr>'}
-      <tr class="sect"><td colspan="12">Bank (${t.bench.length})</td></tr>
+      <tr class="sect"><td colspan="9">Startelf (${t.starters.length})</td></tr>
+      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="9" class="l nodata">Keine Startelf gesetzt</td></tr>'}
+      <tr class="sect"><td colspan="9">Bank (${t.bench.length})</td></tr>
       ${t.bench.map(x=>row(x,'bench')).join('')}
     </tbody></table></div>`;
 }
@@ -1325,14 +1360,8 @@ $('thead').addEventListener('click', e => {
   if(state.sort===c.k) state.dir *= -1; else { state.sort=c.k; state.dir = c.l ? 1 : -1; }
   renderHead(); renderTable();
 });
-$('tbody').addEventListener('change', e => {
-  const id = +e.target.dataset.id; if(!id) return;
-  if(e.target.checked){ if(state.selected.size>=4){ e.target.checked=false; return; } state.selected.add(id); }
-  else state.selected.delete(id);
-  renderTable(); renderCompare();
-});
 $('cmp').addEventListener('click', e => {
-  const id = +e.target.dataset.rm; if(!id) return; state.selected.delete(id); renderTable(); renderCompare();
+  const id = +e.target.dataset.rm; if(!id) return; toggleSelect(id);
 });
 $('scoring').addEventListener('input', e => {
   const k = e.target.dataset.sk; if(!k) return;
@@ -1359,6 +1388,19 @@ async function doLoadLeague(){
 }
 $('loadLeague').addEventListener('click', doLoadLeague);
 $('kiRun').addEventListener('click', runKiNow);
+$('colBtn').addEventListener('click', () => { const pnl = $('colPanel'); pnl.hidden = !pnl.hidden; if(!pnl.hidden) renderColPanel(); });
+$('colList').addEventListener('change', e => {
+  const k = e.target.dataset.colvis; if(!k) return;
+  colCfg.hidden = e.target.checked ? colCfg.hidden.filter(x => x !== k) : [...colCfg.hidden, k]; saveCols();
+});
+$('colList').addEventListener('click', e => {
+  const mv = +e.target.dataset.colmv; if(!mv) return;
+  const k = e.target.closest('li').dataset.k, i = colCfg.order.indexOf(k), j = i + mv;
+  if(j < 0 || j >= colCfg.order.length) return;
+  [colCfg.order[i], colCfg.order[j]] = [colCfg.order[j], colCfg.order[i]]; saveCols();
+});
+$('colReset').addEventListener('click', () => { colCfg = { order:[...COL_DEFAULT_ORDER], hidden:[] }; saveCols(); });
+$('cmpPill').addEventListener('click', () => $('cmpCard').scrollIntoView({ behavior:'smooth', block:'start' }));
 // Zeile antippen/anklicken markiert sie sofort (Spieler werden in allen Tabellen mitmarkiert)
 document.addEventListener('click', e => {
   if(e.target.closest('input,button,a,select,summary,label')) return;
@@ -1368,8 +1410,7 @@ document.addEventListener('click', e => {
     state.hlOwner = state.hlOwner === owner ? null : owner;
     document.querySelectorAll('#lgBody tr').forEach(r => r.classList.toggle('hl', r.dataset.owner === state.hlOwner));
   } else if(pid != null){
-    state.hlPid = state.hlPid === +pid ? null : +pid;
-    document.querySelectorAll('tbody tr[data-pid]').forEach(r => r.classList.toggle('hl', +r.dataset.pid === state.hlPid));
+    toggleSelect(+pid);
   } else {
     const on = !tr.classList.contains('hl');
     tr.parentElement.querySelectorAll('tr.hl').forEach(r => r.classList.remove('hl'));
