@@ -104,29 +104,40 @@ export default async (req: Request) => {
       `\n\nWerte diese Schlagzeilen zuerst aus (Verletzungen, Sperren, Rotation, Transfers) und beziehe dich mit Datum darauf. Nutze die Websuche, um wichtige Meldungen im Detail zu lesen oder Lücken zu füllen.`
     : "";
 
-  const call = (model: string) => fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const call = (model: string, withSearch: boolean, effort: string) => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(40000),
     body: JSON.stringify({
       model,
-      messages: [{ role: "system", content: systemPrompt(today, season) + newsBlock }, ...messages],
-      tools: [{ type: "browser_search" }],
-      tool_choice: "auto",
-      reasoning_effort: "medium",
+      messages: [{ role: "system", content: systemPrompt(today, season) + newsBlock + (withSearch ? "" :
+        "\n\n(Websuche ist gerade nicht verfügbar – stütze dich auf die Schlagzeilen und Daten oben.)") }, ...messages],
+      ...(withSearch ? { tools: [{ type: "browser_search" }], tool_choice: "auto" } : {}),
+      reasoning_effort: effort,
       temperature: 0.6,
       max_completion_tokens: 4096,
     }),
   });
-  // Bei Tageslimit auf das kleinere Modell (eigenes Kontingent) ausweichen
-  let usedModel = Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b";
-  let res = await call(usedModel);
-  if (res.status === 429 && usedModel !== "openai/gpt-oss-20b") { usedModel = "openai/gpt-oss-20b"; res = await call(usedModel); }
-
-  let data: any = null;
-  try { data = await res.json(); } catch { /* leer */ }
-  if (!res.ok) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
-    return json(res.status === 429 ? 429 : 502, { error: res.status === 429 ? `Groq-Limit erreicht (${/per day|TPD|RPD/.test(msg) ? "Tageskontingent aufgebraucht – morgen wieder verfügbar, oder «In Claude öffnen» nutzen" : "bitte 1 Minute warten"}).` : `Groq Fehler: ${msg}` });
+  // Ausweichstufen: 1) mit Websuche, 2) nochmals mit Websuche, 3) ohne Websuche (Schlagzeilen genügen),
+  // 4) kleineres Modell. Bei Tageslimit direkt aufs kleinere Modell (eigenes Kontingent).
+  const big = Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b", small = "openai/gpt-oss-20b";
+  const plan: [string, boolean, string][] = [[big, true, "medium"], [big, true, "low"], [big, false, "medium"], [small, false, "medium"]];
+  let res: Response | null = null, data: any = null, usedModel = big, lastErr = "";
+  for (let i = 0; i < plan.length; i++) {
+    let [m, search, effort] = plan[i];
+    if (lastErr.startsWith("429")) { if (m === big) continue; }
+    try { res = await call(m, search, effort); } catch (e) { lastErr = "timeout"; continue; }
+    data = null; try { data = await res.json(); } catch { /* leer */ }
+    if (res.ok && data?.choices?.[0]?.message?.content) { usedModel = m; break; }
+    lastErr = `${res.status} ${data?.error?.message || ""}`;
+    if (res.status === 429 && m === small) break;
+    res = null;
+  }
+  if (!res || !res.ok) {
+    const is429 = lastErr.startsWith("429");
+    return json(is429 ? 429 : 502, { error: is429
+      ? `Groq-Limit erreicht (${/per day|TPD|RPD/.test(lastErr) ? "Tageskontingent aufgebraucht – morgen wieder verfügbar, oder «In Claude öffnen» nutzen" : "bitte 1 Minute warten"}).`
+      : "Der Coach konnte gerade keine Antwort erzeugen (mehrere Versuche). Bitte nochmals senden oder «In Claude öffnen» nutzen." });
   }
 
   const msg = data?.choices?.[0]?.message || {};
