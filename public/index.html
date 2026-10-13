@@ -45,7 +45,7 @@ details.card summary{cursor:pointer;font-weight:700}
 .scoring input{width:100%}
 pre.raw{background:var(--panel2);border-radius:8px;padding:8px;max-height:180px;overflow:auto;font-size:11px;color:var(--muted)}
 .tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);max-height:75vh}
-table{border-collapse:collapse;width:100%;min-width:1100px}
+table{border-collapse:collapse;width:100%;min-width:0}
 thead th{position:sticky;top:0;background:var(--panel2);z-index:2;text-align:right;font-size:12px;color:var(--muted);padding:9px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
 thead th.l{text-align:left}
 thead th.sorted{color:var(--accent)}
@@ -171,6 +171,18 @@ td.muted{color:var(--muted)}
 .lgt{min-width:0!important;width:100%}
 @media (max-width: 640px){
   .desk{display:none}
+  #thead th,#tbody td{padding:6px 4px}
+  #thead th{font-size:11px}
+  #tbody td .nm{font-size:13px}
+  #tbody td .sub{font-size:10px;gap:4px}
+  .fdr.sm span{font-size:8px;padding:0 2px}
+  .score{min-width:28px;padding:2px 4px;font-size:12px}
+  .tablewrap table{min-width:0}
+  .cmp table{table-layout:fixed;width:100%}
+  .cmp td,.cmp th{padding:4px 3px;font-size:12px;white-space:normal;word-break:break-word}
+  .cmp .bar{display:none}
+  .kitext{max-width:none}
+  .legend{font-size:11px;gap:6px}
   .card{padding:10px}
   .pltab{min-width:0!important;font-size:12px}
   .pltab th,.pltab td{padding:4px 3px}
@@ -276,7 +288,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   </div>
 
   <div class="card" id="colPanel" hidden style="margin-bottom:12px">
-    <h2>Spalten anpassen <span>Häkchen = anzeigen · ↑↓ = Reihenfolge · wird gespeichert</span></h2>
+    <h2>Spalten anpassen <span>Häkchen = anzeigen · ↑↓ = Reihenfolge · Handy und Laptop werden getrennt gespeichert</span></h2>
     <ul id="colList" class="collist"></ul>
     <button class="ghost" id="colReset">Standard wiederherstellen</button>
   </div>
@@ -883,30 +895,32 @@ function renderCalib(){
     <p>Grundlage: <b>${calib.n}</b> Einsätze aus GW ${calib.gws[0]}–${calib.gws[calib.gws.length-1]}. Die <b>echten Punkte sind exakt</b>: Sleeper liefert alle Stats (Key Passes, Schüsse aufs Tor, Flanken, Luftduelle …) und die Seite rechnet sie mit eurer Liga-Wertung. Form, Score und Saisonpunkte verwenden diese echten Werte.</p>
     <p>Für Prognosen braucht es zusätzlich das Modell aus den Premier-League-Daten – so genau trifft es die echten Punkte:</p>
     <p>Durchschnittliche Abweichung pro Spieler und Spiel: <b style="color:var(--bad)">${fmt(calib.before,1)}</b> (alte Standard-Regeln) → ${fmt(calib.rulesOnly,1)} (nur Liga-Regeln) → <b style="color:var(--accent)">${fmt(calib.after,1)} Punkte</b> (Liga-Regeln + gelernte Zusatzwerte). Übereinstimmung (Korrelation): ${fmt(calib.rBefore,2)} → <b>${fmt(calib.rAfter,2)}</b>.</p>
-    <details><summary class="empty" style="cursor:pointer">Gelernte Zusatzwerte je Position (für Stats, die nur Sleeper zählt)</summary>
+    <details class="desk"><summary class="empty" style="cursor:pointer">Gelernte Zusatzwerte je Position (für Stats, die nur Sleeper zählt)</summary>
     <table class="mdt"><tbody><tr><th>Wert</th>${Object.keys(P).map(k=>`<th>${P[k]} (n=${calib.byPos[k].n})</th>`).join('')}</tr>
     ${LR_KEYS.map(k => `<tr><td>${LR_LABEL[k]}</td>${Object.keys(P).map(pos => `<td>${(calib.lr[pos][k] >= 0 ? '+' : '') + fmt(calib.lr[pos][k], 2)}</td>`).join('')}</tr>`).join('')}
     </tbody></table></details>`;
   // Kader des gewählten Teams: echte vs. berechnete Punkte pro Spieltag
   const r = sleeper.rosters.find(x => x.owner === teamA);
   if(!r){ $('calibTable').innerHTML = ''; return; }
-  const gws = calib.gws, byFid = {};
+  const gws = calib.gws.slice(-8), byFid = {};
+  const dcls = i => i < gws.length - 5 ? ' class="desk"' : ''; // am Handy nur die letzten 5 Spieltage
   for(const row of calib.rows) (byFid[row.id] ||= {})[row.gw] = row;
   const lines = r.players.map(pid => {
     const fid = sleeper.fplBySleeper[pid]; const p = fid != null ? players.find(x => x.id === fid) : null;
     const act = (sleeper.actual || {})[fid] || {};
     let sa = 0, sc = 0;
-    const cells = gws.map(gw => {
+    for(const w of calib.gws.slice(0, -8)){ const a0 = act[w]; if(a0 != null) sa += a0; }
+    const cells = gws.map((gw, gi) => {
       const a = act[gw], row = (byFid[fid] || {})[gw];
       const c = row ? row.after : (p && histById && (histById[fid]||{})[gw] ? pointsFrom(liveToP(p.pos, histById[fid][gw]), scoring, false) : null);
       if(a != null) sa += a; if(c != null) sc += c;
-      if(a == null && c == null) return '<td style="color:var(--muted)">–</td>';
+      if(a == null && c == null) return `<td${dcls(gi)} style="color:var(--muted)">–</td>`;
       const d = (a ?? 0) - (c ?? 0);
-      return `<td title="echt ${fmt(a,1)} / berechnet ${fmt(c,1)}">${a != null ? fmt(a,1) : '–'} <span class="desk" style="color:${Math.abs(d) > 4 ? 'var(--warn)' : 'var(--muted)'};font-size:11px">(${c != null ? fmt(c,1) : '–'})</span></td>`;
+      return `<td${dcls(gi)} title="echt ${fmt(a,1)} / berechnet ${fmt(c,1)}">${a != null ? fmt(a,1) : '–'} <span class="desk" style="color:${Math.abs(d) > 4 ? 'var(--warn)' : 'var(--muted)'};font-size:11px">(${c != null ? fmt(c,1) : '–'})</span></td>`;
     }).join('');
     return { name: p ? p.name : (sleeper.sp[pid]?.name || pid), pos: p ? p.pos : (sleeper.sp[pid]?.pos || ''), sa, sc, html: cells };
   }).sort((a,b) => b.sa - a.sa);
-  $('calibTable').innerHTML = `<table class="mdt" style="width:100%"><tbody><tr><th>Spieler (${esc(sleeper.users[teamA]||'')})</th>${gws.map(g=>`<th>${g}</th>`).join('')}<th>Σ</th><th class="desk">Σ berechnet</th></tr>` +
+  $('calibTable').innerHTML = `<table class="mdt" style="width:100%"><tbody><tr><th>Spieler (${esc(sleeper.users[teamA]||'')})</th>${gws.map((g,gi)=>`<th${dcls(gi)}>${g}</th>`).join('')}<th>Σ</th><th class="desk">Σ berechnet</th></tr>` +
     lines.map(l => `<tr><td><span class="pname p-${l.pos}">${esc(l.name)}</span></td>${l.html}<td><b>${fmt(l.sa,0)}</b></td><td class="desk">${fmt(l.sc,1)}</td></tr>`).join('') +
     `</tbody></table><div class="empty" style="margin-top:6px">Format: echte Sleeper-Punkte (Berechnung der Seite). Orange = Abweichung über 4 Punkte.</div>`;
 }
@@ -1143,12 +1157,18 @@ const COLDEFS = [
   {k:'xpts90', t:'xPkt/90', cls:'mono', cell:p => fmt(p.xpts90,2)},
 ];
 const COL_DEFAULT_ORDER = COLDEFS.map(c => c.k);
-let colCfg = (() => {
-  const c = store.get('cols') || {};
+const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+const MOBILE_COLS = ['name','score','prog','xfp','owner'];
+const colKey = () => isMobile() ? 'colsM' : 'cols';
+const loadColCfg = () => {
+  const c = store.get(colKey()) || (isMobile() ? { order: [...MOBILE_COLS, ...COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k))], hidden: COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k)) } : {});
   const order = (c.order || []).filter(k => COL_DEFAULT_ORDER.includes(k));
   for(const k of COL_DEFAULT_ORDER) if(!order.includes(k)) order.push(k);
   return { order, hidden: (c.hidden || []).filter(k => k !== 'name') };
-})();
+};
+let colCfg = loadColCfg();
+let lastMobile = isMobile();
+window.addEventListener('resize', () => { if(isMobile() !== lastMobile){ lastMobile = isMobile(); colCfg = loadColCfg(); renderHead(); renderTable(); if(!$('colPanel').hidden) renderColPanel(); } });
 function activeCols(){
   return colCfg.order.filter(k => !colCfg.hidden.includes(k)).map(k => COLDEFS.find(c => c.k === k));
 }
@@ -1164,8 +1184,9 @@ function ownerLabel(p){
   if(!Object.keys(sleeper.users).length) return '';
   const o = ownerOf(p);
   if(!o) return '<span class="owner free">frei</span>';
-  if(o === sleeper.me) return '<span class="owner me">mein Team</span>';
-  return `<span class="owner">${esc(sleeper.users[o]||'?')}</span>`;
+  if(o === sleeper.me) return `<span class="owner me">${isMobile() ? 'ich' : 'mein Team'}</span>`;
+  const n = sleeper.users[o]||'?';
+  return `<span class="owner" title="${esc(n)}">${esc(isMobile() && n.length > 8 ? n.slice(0,7)+'…' : n)}</span>`;
 }
 function sortVal(p,k){
   if(k==='name') return p.name.toLowerCase();
@@ -1232,7 +1253,7 @@ function renderColPanel(){
       <span><button class="ghost" data-colmv="-1" ${i===0?'disabled':''} title="nach vorne">↑</button><button class="ghost" data-colmv="1" ${i===colCfg.order.length-1?'disabled':''} title="nach hinten">↓</button></span></li>`;
   }).join('');
 }
-function saveCols(){ store.set('cols', colCfg); renderColPanel(); renderHead(); renderTable(); }
+function saveCols(){ store.set(colKey(), colCfg); renderColPanel(); renderHead(); renderTable(); }
 function renderCmpPill(){
   const n = state.selected.size, el = $('cmpPill'); if(!el) return;
   el.hidden = !n; el.textContent = `⇄ Vergleich (${n})`;
@@ -1626,7 +1647,7 @@ $('colList').addEventListener('click', e => {
   if(j < 0 || j >= colCfg.order.length) return;
   [colCfg.order[i], colCfg.order[j]] = [colCfg.order[j], colCfg.order[i]]; saveCols();
 });
-$('colReset').addEventListener('click', () => { colCfg = { order:[...COL_DEFAULT_ORDER], hidden:[] }; saveCols(); });
+$('colReset').addEventListener('click', () => { try { localStorage.removeItem('plscout_'+colKey()); } catch(e){} colCfg = loadColCfg(); saveCols(); });
 $('cmpPill').addEventListener('click', () => $('cmpCard').scrollIntoView({ behavior:'smooth', block:'start' }));
 // Zeile antippen/anklicken markiert sie sofort (Spieler werden in allen Tabellen mitmarkiert)
 document.addEventListener('click', e => {
