@@ -299,7 +299,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   </div>
 
   <div class="card" id="colPanel" hidden style="margin-bottom:12px">
-    <h2>Spalten anpassen <span>Häkchen = anzeigen · ↑↓ = Reihenfolge · Handy und Laptop werden getrennt gespeichert</span></h2>
+    <h2>Spalten anpassen <span>Häkchen = anzeigen · ↑↓ = Reihenfolge · Handy, Tablet und grosser Bildschirm werden getrennt gespeichert</span></h2>
     <ul id="colList" class="collist"></ul>
     <button class="ghost" id="colReset">Standard wiederherstellen</button>
   </div>
@@ -1168,18 +1168,21 @@ const COLDEFS = [
   {k:'xpts90', t:'xPkt/90', cls:'mono', cell:p => fmt(p.xpts90,2)},
 ];
 const COL_DEFAULT_ORDER = COLDEFS.map(c => c.k);
+// Drei Bildschirmgrössen mit eigener Spaltenwahl: Handy, Tablet/kleiner Laptop, grosser Bildschirm
 const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
-const MOBILE_COLS = ['name','score','prog','xfp','l10'];
-const colKey = () => isMobile() ? 'colsM2' : 'cols2';
+const screenSize = () => isMobile() ? 'S' : (window.matchMedia('(max-width: 1199px)').matches ? 'M' : 'L');
+const SIZE_COLS = { S: ['name','score','prog','xfp','l10'], M: ['name','score','prog','xfp','ceil','xMin','l10','minL5','slp','pts90'] };
+const colKey = () => ({ S:'colsM2', M:'colsT2', L:'cols2' })[screenSize()];
 const loadColCfg = () => {
-  const c = store.get(colKey()) || (isMobile() ? { order: [...MOBILE_COLS, ...COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k))], hidden: COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k)) } : { hidden: ['owner'] });
+  const vis = SIZE_COLS[screenSize()];
+  const c = store.get(colKey()) || (vis ? { order: [...vis, ...COLDEFS.map(x=>x.k).filter(k=>!vis.includes(k))], hidden: COLDEFS.map(x=>x.k).filter(k=>!vis.includes(k)) } : { hidden: ['owner'] });
   const order = (c.order || []).filter(k => COL_DEFAULT_ORDER.includes(k));
   for(const k of COL_DEFAULT_ORDER) if(!order.includes(k)) order.push(k);
   return { order, hidden: (c.hidden || []).filter(k => k !== 'name') };
 };
 let colCfg = loadColCfg();
-let lastMobile = isMobile();
-window.addEventListener('resize', () => { if(isMobile() !== lastMobile){ lastMobile = isMobile(); colCfg = loadColCfg(); renderHead(); renderTable(); if(!$('colPanel').hidden) renderColPanel(); } });
+let lastSize = screenSize();
+window.addEventListener('resize', () => { if(screenSize() !== lastSize){ lastSize = screenSize(); colCfg = loadColCfg(); renderHead(); renderTable(); if(!$('colPanel').hidden) renderColPanel(); } });
 function activeCols(){
   return colCfg.order.filter(k => !colCfg.hidden.includes(k)).map(k => COLDEFS.find(c => c.k === k));
 }
