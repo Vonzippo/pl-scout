@@ -1169,7 +1169,7 @@ function filtered(){
   return players.filter(p => {
     if(state.pos && p.pos!==state.pos) return false;
     if(state.team && String(p.teamId)!==state.team) return false;
-    if(p.minutes < state.minMin && !state.selected.has(p.id)) return false;
+    if(p.minutes < state.minMin && !state.selected.has(p.id) && !ownerOf(p)) return false; // Kaderspieler der Liga immer zeigen
     if(state.fitOnly && p.status!=='a') return false;
     if(q && !norm(p.full+' '+p.name).includes(q)) return false;
     const o = ownerOf(p);
