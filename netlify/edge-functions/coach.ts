@@ -104,10 +104,11 @@ export default async (req: Request) => {
       `\n\nWerte diese Schlagzeilen zuerst aus (Verletzungen, Sperren, Rotation, Transfers) und beziehe dich mit Datum darauf. Nutze die Websuche, um wichtige Meldungen im Detail zu lesen oder Lücken zu füllen.`
     : "";
 
+  const t0 = Date.now();
   const call = (model: string, withSearch: boolean, effort: string) => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(40000),
+    signal: AbortSignal.timeout(Math.max(5000, 37000 - (Date.now() - t0))),
     body: JSON.stringify({
       model,
       messages: [{ role: "system", content: systemPrompt(today, season) + newsBlock + (withSearch ? "" :
@@ -126,6 +127,7 @@ export default async (req: Request) => {
   for (let i = 0; i < plan.length; i++) {
     let [m, search, effort] = plan[i];
     if (lastErr.startsWith("429")) { if (m === big) continue; }
+    if (Date.now() - t0 > 30000) break; // Zeitbudget der Edge Function
     try { res = await call(m, search, effort); } catch (e) { lastErr = "timeout"; continue; }
     data = null; try { data = await res.json(); } catch { /* leer */ }
     if (res.ok && data?.choices?.[0]?.message?.content) { usedModel = m; break; }
