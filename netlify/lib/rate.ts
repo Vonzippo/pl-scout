@@ -1,7 +1,8 @@
 // KI-Einzelbewertung von Spielern: aktuelle Schlagzeilen holen und per Groq bewerten.
 // Läuft sowohl in Netlify Functions (Node) als auch in Edge Functions (Deno).
 
-export type Info = { id: number; name: string; club: string; pos: string; line: string };
+export type Info = { id: number; name: string; club: string; pos: string; line: string; sid?: string };
+export type SlNews = { date: string; ts: number; title: string; text: string };
 export type Headline = { title: string; source: string; date: string; ts: number };
 export type Rating = { r: number; t: string; ts: number; n?: { title: string; source: string; date: string }[] };
 
@@ -32,6 +33,21 @@ export async function headlinesFor(name: string, max = 4): Promise<Headline[]> {
   } catch { return []; }
 }
 
+// Sleeper-News (Rotowire): Titel + Beschreibung, letzte 14 Tage
+export async function sleeperNews(sid?: string, max = 2): Promise<SlNews[]> {
+  if (!sid || !/^\d+$/.test(sid)) return [];
+  try {
+    const r = await fetch(`https://api.sleeper.com/players/clubsoccer/${sid}/news`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return [];
+    const arr: any[] = await r.json();
+    const lim = Date.now() - 14 * 864e5;
+    return (Array.isArray(arr) ? arr : []).filter((n) => n && n.published > lim).sort((a, b) => b.published - a.published).slice(0, max).map((n) => ({
+      ts: n.published, title: String(n.metadata?.title || "").slice(0, 120), text: String(n.metadata?.description || "").slice(0, 260),
+      date: new Date(n.published).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" }),
+    }));
+  } catch { return []; }
+}
+
 export function todayAndSeason() {
   const now = new Date();
   const today = now.toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "long", year: "numeric" });
@@ -43,15 +59,19 @@ export async function rateBatch(infos: Info[], apiKey: string, model?: string): 
   // eigenes Kontingent: kleineres Modell zuerst, bei Limit das nächste
   const models = model ? [model] : ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3-32b"];
   const { today, season } = todayAndSeason();
-  const news = await Promise.all(infos.map((i) => headlinesFor(i.name)));
+  const [news, sl] = await Promise.all([
+    Promise.all(infos.map((i) => headlinesFor(i.name))),
+    Promise.all(infos.map((i) => sleeperNews(i.sid))),
+  ]);
   const blocks = infos.map((i, k) => {
     const h = news[k].length ? news[k].map((n) => `    - ${n.date}: ${n.title} (${n.source})`).join("\n") : "    - (keine Schlagzeilen in den letzten 7 Tagen)";
-    return `ID ${i.id} | ${i.name} (${i.club}, ${i.pos}) | ${i.line}\n  Schlagzeilen:\n${h}`;
+    const s = sl[k].length ? `\n  Sleeper-News (Rotowire, zuverlässig):\n` + sl[k].map((n) => `    - ${n.date}: ${n.title} – ${n.text}`).join("\n") : "";
+    return `ID ${i.id} | ${i.name} (${i.club}, ${i.pos}) | ${i.line}${s}\n  Schlagzeilen:\n${h}`;
   }).join("\n\n");
 
   const system = `Du bist Scout für Fantasy-Fussball (englische Premier League, Saison ${season}). Heute ist ${today}.
 Bewerte JEDEN Spieler einzeln mit einem KI-Rating von 0 bis 100 für die nächsten 1–3 Spiele:
-- Stütze dich vor allem auf die Schlagzeilen (Verletzung, Sperre, Rotation, Trainer-Aussagen, Formkrise/Formhoch, Transfer, Rolle im Team) und ergänze mit den Zahlen.
+- Stütze dich vor allem auf die Sleeper-News (falls vorhanden, sie sind am zuverlässigsten) und die Schlagzeilen (Verletzung, Sperre, Rotation, Trainer-Aussagen, Formkrise/Formhoch, Transfer, Rolle im Team) und ergänze mit den Zahlen.
 - Skala: 90–100 = Top-Pick, fast sicher stark; 70–89 = klar aufstellen; 50–69 = solider Stammspieler; 30–49 = Risiko (Rotation, fraglich, schwache Form); 0–29 = fällt aus oder spielt kaum.
 - Verfügbarkeit: «verletzt»/«gesperrt»/«nicht verfügbar» oder Einsatzchance 0–25% → höchstens 15. Einsatzchance 50% → höchstens 50. Einsatzchance 75% → spielt meistens: normal bewerten und nur ca. 10 Punkte abziehen. Ohne relevante News: Rating aus Einsatzzeit, Form und Rolle ableiten.
 - "t": ein Satz Begründung auf Deutsch (Schweizer Rechtschreibung, kein ß), max. 140 Zeichen, nenne die wichtigste News mit Datum, falls vorhanden.
@@ -89,7 +109,7 @@ Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"
     out[id] = {
       r: Math.max(0, Math.min(100, Math.round(Number(x.r)))),
       t: String(x.t || "").slice(0, 220), ts,
-      n: news[k].slice(0, 3).map(({ title, source, date }) => ({ title, source, date })),
+      n: [...sl[k].slice(0, 1).map(({ title, date }) => ({ title, source: "Sleeper", date })), ...news[k].slice(0, 3).map(({ title, source, date }) => ({ title, source, date }))].slice(0, 3),
     };
   }
   return out;

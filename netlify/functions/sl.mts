@@ -6,10 +6,11 @@ export default async (req: Request) => {
   const u = new URL(req.url);
   const rest = u.pathname.replace(/^\/api\/sl\//, "");
   if (!/^[a-z0-9_\-:/]+$/i.test(rest)) return new Response('{"error":"ungültig"}', { status: 400 });
-  const isStats = /^(stats|projections)\//.test(rest);
-  const qs = [...u.searchParams].filter(([k]) => k === "season_type").map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+  const isNews = /^players\/clubsoccer\/\d+\/news$/.test(rest);
+  const isStats = isNews || /^(stats|projections)\//.test(rest);
+  const qs = [...u.searchParams].filter(([k]) => ["season_type", "lookback_hours", "limit"].includes(k)).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
   const target = (isStats ? "https://api.sleeper.com/" : "https://api.sleeper.app/v1/") + rest + (qs ? "?" + qs : "");
-  const ttl = isStats ? (rest.startsWith("projections") ? 900 : 300) : 60;
+  const ttl = isNews ? 600 : isStats ? (rest.startsWith("projections") ? 900 : 300) : 60;
   const key = (rest + "_" + qs).replace(/[^a-z0-9]/gi, "_");
   const store = getStore({ name: "sleeper-cache" });
   const out = (body: string, src: string, cdn: string) => new Response(body, {

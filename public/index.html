@@ -206,6 +206,51 @@ td.muted{color:var(--muted)}
 .otag.free{color:var(--accent);border-color:#1f6a4b}.otag.me{color:var(--accent2);border-color:#24507f}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
+
+/* Spielerprofil (Doppeltipp) */
+tbody tr[data-pid]{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+body.noscroll{overflow:hidden}
+.pv{position:fixed;inset:0;background:rgba(3,6,10,.72);z-index:60;display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;padding:28px 14px;-webkit-overflow-scrolling:touch}
+.pv[hidden]{display:none}
+.pvbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:780px;width:100%;padding:16px 18px 20px;position:relative}
+.pvx{position:absolute;top:10px;right:10px;width:36px;height:36px;padding:0;border-radius:50%;font-size:16px}
+.pvname{font-size:22px;font-weight:800;margin-right:44px;line-height:1.2}
+.pvsub{color:var(--muted);font-size:12px;margin-top:3px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pvkpi{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0 6px}
+.pvkpi div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+.pvkpi b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.pvkpi small{color:var(--muted);font-size:11px;display:block;margin-top:3px}
+.pvkpi .score{font-size:20px;padding:2px 10px}
+.pvsec{margin-top:16px}
+.pvsec h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px}
+.pvcomp{display:grid;grid-template-columns:118px 46px 1fr;gap:4px 10px;align-items:center;font-size:13px}
+.pvcomp .v{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.pvcomp .why{grid-column:3;color:var(--muted);font-size:11px;margin-top:-3px}
+.pvcomp .bar{width:100%;margin:0;height:8px}
+.pvcomp .w{color:var(--muted);font-size:11px;font-weight:400}
+.pvfacts{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;font-size:13px}
+.pvfacts>div>span:first-child{color:var(--muted);display:block;font-size:11px}
+.pvst{display:inline-block;font-weight:700;border-radius:6px;padding:2px 8px;font-size:12px}
+.pvst.ok{background:#0e2f22;color:#37e39b}.pvst.warn{background:#4a3a1c;color:#ffd99a}.pvst.bad{background:#4a1d26;color:#ffb3bd}
+.pvnews{border-left:3px solid var(--line);padding:4px 0 4px 10px;margin:8px 0;font-size:13px}
+.pvnews b{display:block}
+.pvnews small{color:var(--muted)}
+.pvnews p{margin:4px 0 0;color:#c9d4e0}
+.pvnews details{margin-top:4px;font-size:12px;color:var(--muted)}
+.pvnews.ki{border-color:var(--accent2)}
+.pvgames td,.pvgames th{padding:5px 6px;font-size:12px}
+.pvgames th{position:static;cursor:default}
+.pvbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+@media(max-width:640px){
+  .pv{padding:0}
+  .pvbox{border-radius:0;border:0;min-height:100%;padding:14px 16px 28px}
+  .pvname{font-size:19px}
+  .pvkpi{grid-template-columns:repeat(3,1fr);gap:6px}
+  .pvkpi b{font-size:17px}
+  .pvcomp{grid-template-columns:96px 38px 1fr;gap:3px 8px;font-size:12px}
+  .pvfacts{grid-template-columns:1fr 1fr;font-size:12px}
+  .pvgames td,.pvgames th{padding:4px 3px;font-size:11px}
+}
 </style>
 </head>
 <body>
@@ -351,6 +396,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 
   </section>
 </main>
+<div id="pv" class="pv" hidden><div class="pvbox" role="dialog" aria-modal="true" aria-label="Spielerprofil"><button class="pvx ghost" data-pvclose title="Schliessen">✕</button><div id="pvBody"></div></div></div>
 <footer>Daten: offizielle Fantasy Premier League API (Stats & Spielplan) und Sleeper API (Liga & Kader). Prognose = eigene Punkteregeln × Einsatzminuten × Gegnerstärke – eine Orientierung, keine Garantie.</footer>
 
 <script>
@@ -563,10 +609,10 @@ function computeXfp(){
 
 /* ---------- PL-Scout-Score ---------- */
 // Score = wie gut ein Spieler ist (unabhängig vom Spielplan); kurzfristiges steckt in der Prognose
-const SCORE_DEFAULT = { form:30, eff:25, xs:20, min:20, trend:5 };
-const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Einsatzzeit (Stammspieler?)', xs:'Expected (xG/xA-basiert)', trend:'Trend (letzte 3 vs. 10)' };
-const SCORE_SHORT = { form:'Form', eff:'Effizienz', xs:'Expected', min:'Einsatzzeit', trend:'Trend' };
-let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW3') || {});
+const SCORE_DEFAULT = { form:25, eff:20, xs:15, min:15, inv:10, fit:10, trend:5 };
+const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Rolle / Einsatzzeit (Stammspieler?)', xs:'Expected (xG/xA-basiert)', inv:'Einbindung (wie oft angespielt, Ballaktionen)', fit:'Fitness & News (Verletzung, Sperre, News, Wechsel)', trend:'Trend (letzte 3 vs. 10)' };
+const SCORE_SHORT = { form:'Form', eff:'Effizienz', xs:'Expected', min:'Rolle', inv:'Einbindung', fit:'Fitness & News', trend:'Trend' };
+let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW4') || {});
 const N_FORM = 10;
 
 function liveToP(pos, st){
@@ -630,6 +676,46 @@ function newsValue(p){
   if(sl){ const s = sl.toLowerCase(); if(s === 'out' || s === 'ir' || s === 'sus') v = Math.min(v, 0); else if(s.startsWith('quest') || s === 'doubtful') v = Math.min(v, s==='doubtful'?0.25:0.5); }
   return v;
 }
+// Einbindung: wie oft der Spieler angespielt wird bzw. am Ball ist (Sleeper-Stats, letzte bis zu 10 Spiele)
+const INV_W = { FWD:[0.15,4,3,1,0,0], MID:[0.25,4,2.5,1.5,0,0], DEF:[0.25,3,1.5,2,0.5,0], GKP:[0.2,0,0,0,0.3,1] };
+function involvement(p){
+  const rs = sleeper.rawStats && sleeper.rawStats[p.id]; if(!rs) return null;
+  const wks = Object.keys(rs).map(Number).sort((a,b)=>a-b).slice(-N_FORM);
+  const agg = list => { const t = { min:0, p_att:0, kp:0, sat:0, def:0, clr:0, sv:0 };
+    for(const w of list){ const x = rs[w]; t.min += x.min||0; t.p_att += x.p_att||0; t.kp += x.kp||0; t.sat += x.sat||0; t.def += (x.tkw||0)+(x.int||0); t.clr += x.clr||0; t.sv += x.sv||0; }
+    const f = t.min > 0 ? 90 / t.min : 0;
+    return { min:t.min, p90:t.p_att*f, kp90:t.kp*f, sat90:t.sat*f, def90:t.def*f, clr90:t.clr*f, sv90:t.sv*f }; };
+  const all = agg(wks.filter(w => rs[w].min > 0)), l3 = agg(wks.filter(w => rs[w].min > 0).slice(-3));
+  if(all.min < 90) return null;
+  const W = INV_W[p.pos] || INV_W.MID;
+  const ix = a => W[0]*a.p90 + W[1]*a.kp90 + W[2]*a.sat90 + W[3]*a.def90 + W[4]*(p.pos==='GKP'?0:a.clr90) + W[5]*a.sv90;
+  return { ...all, idx: ix(all), idx3: l3.min >= 60 ? ix(l3) : null, p90l3: l3.min >= 60 ? l3.p90 : null, games: wks.filter(w => rs[w].min > 0).length };
+}
+const SL_STATUS = { out:'fällt aus', sus:'gesperrt', ir:'langzeitverletzt', questionable:'fraglich', doubtful:'unwahrscheinlich', probable:'wahrscheinlich fit', na:'nicht verfügbar' };
+function slStatusDe(x){ if(!x) return ''; const k = String(x).toLowerCase(); return SL_STATUS[k] || SL_STATUS[k.slice(0,4)==='ques'?'questionable':k] || x; }
+// Fitness & News: Verfügbarkeit (FPL + Sleeper), KI-News-Einschätzung, frischer Klubwechsel
+function fitness(p){
+  const why = [];
+  let v = newsValue(p);
+  const sp = sleeper.spByFpl && sleeper.spByFpl[p.id];
+  if(p.status && p.status !== 'a') why.push(`PL-Status: ${({ d:'fraglich', i:'verletzt', s:'gesperrt', u:'nicht verfügbar', n:'nicht verfügbar' })[p.status] || p.status}${p.chance!=null?' ('+p.chance+'% Einsatzchance)':''}`);
+  if(sp && sp.injury_status){
+    const ret = sp.metadata && sp.metadata.soccer_injury_return_date;
+    why.push(`Sleeper: ${slStatusDe(sp.injury_status)}${ret ? ', Rückkehr ca. '+fmtDay(ret) : ''}`);
+    if(ret){ const days = (Date.parse(ret) - Date.now()) / 864e5; if(days <= 4) v = Math.max(v, 0.35); }
+  }
+  const ki = kiOf(p);
+  if(ki){
+    v *= 0.75 + 0.25 * Math.min(1, ki.r / 70);
+    if(ki.r <= 15) v = Math.min(v, 0.2);
+    why.push(`News-Einschätzung ${ki.r}/100`);
+  }
+  if(sp && sp.team_changed_at && Date.now() - sp.team_changed_at < 30 * 864e5){ v *= 0.9; why.push('neu im Klub (Eingewöhnung)'); }
+  if(!why.length) why.push('fit, keine negativen News');
+  return { v: clamp01(v), why };
+}
+const fmtDay = d => { const t = typeof d === 'number' ? d : Date.parse(d); return isFinite(t) ? new Date(t).toLocaleDateString('de-CH', { day:'numeric', month:'short' }) : '–'; };
+const fmtDate = d => { const t = typeof d === 'number' ? d : Date.parse(d); return isFinite(t) ? new Date(t).toLocaleDateString('de-CH', { day:'numeric', month:'short', year:'numeric' }) : '–'; };
 function computeRaw(){
   for(const p of players){
     const log = gameLog(p);
@@ -654,6 +740,9 @@ function computeRaw(){
     }
     r.min = clamp01(p.minL5 / 90) * 0.7 + p.startRate * 0.3;
     r.news = newsValue(p);
+    p.inv = involvement(p);
+    r.inv = p.inv ? p.inv.idx : null;
+    const f = fitness(p); r.fit = f.v; p.fitWhy = f.why;
     const nx = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw).slice(0, 3);
     r.fix = nx.length ? clamp01((5 - nx.reduce((t,f)=>t+f.d,0)/nx.length) / 3) : 0.3;
   }
@@ -672,11 +761,12 @@ function computeScores(){
     }
     const sorted = k => pool.map(p => p.raw[k]).sort((a,b)=>a-b);
     for(const p of grp) p.raw.xfp = p.xfp || 0;
-    const S = { form:sorted('form'), eff:sorted('eff'), xs:sorted('xs'), trend:sorted('trend'), xfp:sorted('xfp') };
+    const S = { form:sorted('form'), eff:sorted('eff'), xs:sorted('xs'), trend:sorted('trend'), xfp:sorted('xfp'), inv:pool.filter(p => p.raw.inv != null).map(p => p.raw.inv).sort((a,b)=>a-b) };
     for(const p of grp){
       p.comp = {
         form: pctRank(S.form, p.raw.form), eff: pctRank(S.eff, p.raw.eff), xs: pctRank(S.xs, p.raw.xs),
         trend: pctRank(S.trend, p.raw.trend), min: p.raw.min, news: p.raw.news, fix: p.raw.fix,
+        inv: p.raw.inv == null || S.inv.length < 10 ? null : pctRank(S.inv, p.raw.inv), fit: p.raw.fit,
         xfp: pctRank(S.xfp, p.raw.xfp), ki: kiOf(p) ? kiOf(p).r / 100 : null
       };
       // wer kaum spielt, bekommt bei Form/Trend keinen Bonus
@@ -726,7 +816,7 @@ async function sendWatchlist(){
   if(sleeper.rosters.length) for(const id in sleeper.ownerByFpl) ids.add(+id);
   const freePool = players.filter(p => !ownerOf(p) && p.minutes >= 90).sort((a,b)=>b.score-a.score);
   freePool.slice(0, sleeper.rosters.length ? 100 : 200).forEach(p => ids.add(p.id));
-  const list = players.filter(p => ids.has(p.id)).map(p => ({ id:p.id, name:p.full, club:teams[p.teamId].short, pos:p.pos, line:infoLine(p) }));
+  const list = players.filter(p => ids.has(p.id)).map(p => ({ id:p.id, name:p.full, club:teams[p.teamId].short, pos:p.pos, line:infoLine(p), sid:(sleeper.sidByFpl||{})[p.id] || '' }));
   if(!list.length) return;
   watchSent = true;
   try { await fetch('/api/ki/watchlist', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ players:list }) }); } catch(e){ watchSent = false; }
@@ -831,7 +921,8 @@ async function loadSleeperStats(){
   try { const st = await getJSON('/api/sl/state/clubsoccer:epl'); season = +st.season || season; week = +st.week || week; } catch(e){}
   const weeks = Array.from({ length: week }, (_, i) => i + 1);
   const res = await Promise.allSettled(weeks.map(w => getJSON(`/api/sl/stats/clubsoccer:epl/${season}/${w}?season_type=regular`)));
-  const real = {}, have = [], unm = {};
+  const real = {}, have = [], unm = {}, raw = {};
+  const RAWK = ['min','gs','p_att','kp','sat','sot','tkw','tk','int','clr','aer','bs','sv','xg','xa','g','at','dis','acnc','yc','rc'];
   res.forEach((r, i) => {
     if(r.status !== 'fulfilled' || !Array.isArray(r.value) || !r.value.length) return;
     have.push(weeks[i]);
@@ -842,9 +933,12 @@ async function loadSleeperStats(){
       const cur = (real[fid] ||= {})[weeks[i]];
       const add = { pts: leaguePoints(e.stats, ss), min: num(e.stats.min), gs: num(e.stats.gs) };
       (real[fid])[weeks[i]] = cur ? { pts: cur.pts + add.pts, min: cur.min + add.min, gs: Math.max(cur.gs, add.gs) } : add; // Doppelspieltag
+      const rw = ((raw[fid] ||= {})[weeks[i]] ||= {});
+      for(const k of RAWK) if(e.stats[k] != null) rw[k] = (rw[k] || 0) + num(e.stats[k]);
+      if(e.opponent) rw.opp = e.opponent;
     }
   });
-  sleeper.real = real; sleeper.realWeeks = have;
+  sleeper.real = real; sleeper.realWeeks = have; sleeper.rawStats = raw;
   sleeper.unmatchedStats = Object.values(unm).sort((a,b) => b.pts - a.pts);
   dataStatus.stats = { at: Date.now(), ok: have.length > 0, info: `Spieltage ${have.length ? have[0]+'–'+have[have.length-1] : '–'} · ${Object.keys(real).length} Spieler mit echten Punkten` };
   // Sleeper-Prognose für den nächsten Spieltag
@@ -1074,7 +1168,7 @@ async function loadSleeper(leagueId){
     return norm(t.short)===st || norm(t.name).startsWith(st);
   };
   sleeper.ownerByFpl = {}; sleeper.fplBySleeper = {}; sleeper.sp = {}; sleeper.slByFpl = {};
-  const matchCache = {};
+  const matchCache = {}, clubPool = {};
   // Zuordnung Sleeper → Premier League: Namens-Bausteine + Klub + Position (robust gegen Kurz-/Langnamen wie «Bruno G.», «Ben White»)
   const toks = x => norm(x).split(' ').filter(Boolean);
   const fplTok = new Map(players.map(p => [p.id, new Set([...toks(p.full), ...toks(p.name)])]));
@@ -1088,7 +1182,7 @@ async function loadSleeper(leagueId){
     const ft = full.split(' ');
     const last = norm(s.last_name || ft[ft.length-1]).split(' ').pop();
     const pool = new Set([...(byFull[full]||[]), ...(byLast[last]||[]), ...(byLast[full]||[])]);
-    if(abbr) players.forEach(p => { if(teamMatch(p, abbr)) pool.add(p); });
+    if(abbr) (clubPool[abbr] ||= players.filter(p => teamMatch(p, abbr))).forEach(p => pool.add(p));
     if(!pool.size) players.filter(p => norm(p.full).endsWith(' '+last)).forEach(p => pool.add(p));
     let best = null, bestScore = -1, second = -1;
     for(const c of pool){
@@ -1124,6 +1218,16 @@ async function loadSleeper(leagueId){
       sleeper.ownerByFpl[fid] = owner; sleeper.fplBySleeper[pid] = fid; matched++;
       if(s.injury_status) (sleeper.slByFpl ||= {})[fid] = String(s.injury_status);
     }
+  }
+  // Alle Sleeper-Spieler (auch freie): Verletzungsstatus, Sleeper-Positionen, Klubwechsel, News-ID
+  sleeper.spByFpl = {}; sleeper.sidByFpl = {};
+  for(const [pid, s] of Object.entries(sp)){
+    if(!s || !s.active || !SPOS[(s.fantasy_positions||[])[0] || s.position]) continue;
+    const fid = matchPid(pid); if(fid == null) continue;
+    const prev = sleeper.spByFpl[fid];
+    if(prev && ownerBySleeper[prev.player_id] && !ownerBySleeper[pid]) continue; // Kader-Eintrag hat Vorrang
+    sleeper.spByFpl[fid] = s; sleeper.sidByFpl[fid] = pid;
+    if(s.injury_status) sleeper.slByFpl[fid] = String(s.injury_status); else if(!ownerBySleeper[pid]) delete sleeper.slByFpl[fid];
   }
   // "ich bin"-Auswahl
   const sel = $('meSel');
@@ -1260,7 +1364,7 @@ function renderTable(){
     const cls = [state.selected.has(p.id)?'hl':'', (o && o===sleeper.me)?'mine':''].join(' ');
     return `<tr class="${cls}" data-pid="${p.id}">${cols.map(c => `<td class="${c.l?'l':''} ${c.cls||''}">${c.cell(p)}</td>`).join('')}</tr>`;
   }).join('');
-  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele (40/30/20/10 %)`;
+  $('count').innerHTML = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · <b>Doppeltipp = Spielerprofil</b> · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele (40/30/20/10 %)`;
   renderCmpPill();
 }
 function renderColPanel(){
@@ -1290,7 +1394,7 @@ function renderCompare(){
     ['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
     ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['FPL-Form','form',1]
   ];
-  let h = `<table><thead><tr><th class="l"></th>${sel.map(p=>`<th>${esc(p.name)} <button class="x" data-rm="${p.id}" title="entfernen">✕</button><br><small style="color:var(--muted)">${esc(teams[p.teamId].short)} · ${p.pos}</small></th>`).join('')}</tr></thead><tbody>`;
+  let h = `<table><thead><tr><th class="l"></th>${sel.map(p=>`<th><a href="#" data-pv="${p.id}" title="Spielerprofil öffnen">${esc(p.name)}</a> <button class="x" data-rm="${p.id}" title="entfernen">✕</button><br><small style="color:var(--muted)">${esc(teams[p.teamId].short)} · ${p.pos}</small></th>`).join('')}</tr></thead><tbody>`;
   for(const [label,k,d] of metrics){
     const max = Math.max(...sel.map(p=>p[k]));
     h += `<tr><td class="l">${label}</td>${sel.map(p=>`<td class="${sel.length>1&&p[k]===max&&max>0?'best':''}">${fmt(p[k],d)}</td>`).join('')}</tr>`;
@@ -1601,6 +1705,179 @@ function renderScoring(){
 }
 function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); refreshPreview(); renderDataStatus(); }
 
+/* ---------- Spielerprofil (Doppelklick / Doppeltipp) ---------- */
+const POS_DE = { GKP:'Torhüter', DEF:'Verteidiger', MID:'Mittelfeld', FWD:'Sturm' };
+const POS_PL = { GKP:'Torhütern', DEF:'Verteidigern', MID:'Mittelfeldspielern', FWD:'Stürmern' };
+const SLPOS_DE = { GK:'TW', G:'TW', D:'VER', M:'MIT', F:'STU' };
+let pvId = null;
+function compWhy(p, k){
+  const i = p.inv;
+  switch(k){
+    case 'form': return p.l10games ? `Ø ${fmt(p.l10,1)} Pkt in den letzten ${p.l10games} Spielen (neuere zählen mehr)` : `Ø ${fmt(p.l10,1)} Pkt pro Spiel`;
+    case 'eff': return `${fmt(p.pts90,1)} Pkt pro 90 Min.`;
+    case 'xs': return `${fmt(p.xpts90,1)} erwartete Pkt pro 90 (aus xG/xA)`;
+    case 'min': return `Ø ${Math.round(p.minL5)} Min. in den letzten 5 · Startelf in ${Math.round((p.startRate||0)*100)}% der Spiele`;
+    case 'inv': return i ? (p.pos === 'GKP' ? `${fmt(i.p90,0)} Pässe, ${fmt(i.sv90,1)} Paraden pro 90` :
+      `${fmt(i.p90,0)} Pässe · ${fmt(i.kp90,1)} Key Passes · ${fmt(i.sat90,1)} Schüsse · ${fmt(i.def90,1)} Tackles+Int. pro 90`) : 'zu wenig Einsatzminuten für eine Aussage';
+    case 'fit': return (p.fitWhy || []).join(' · ');
+    case 'trend': return `Ø letzte 3: ${fmt(p.l3,1)} vs. letzte 10: ${fmt(p.l10,1)} Pkt`;
+  }
+  return '';
+}
+function availBadge(p, sp){
+  const st = sp && sp.injury_status ? String(sp.injury_status).toLowerCase() : '';
+  if(['out','sus','ir','na'].includes(st) || ['i','s','u','n'].includes(p.status)) return ['bad', st ? slStatusDe(sp.injury_status) : ({ i:'verletzt', s:'gesperrt', u:'nicht verfügbar', n:'nicht verfügbar' })[p.status]];
+  if(st || p.status === 'd') return ['warn', st ? slStatusDe(sp.injury_status) : `fraglich${p.chance!=null?' ('+p.chance+'%)':''}`];
+  return ['ok', 'fit'];
+}
+function playerSheet(p){
+  const sp = (sleeper.spByFpl || {})[p.id] || null, md = (sp && sp.metadata) || {};
+  const o = ownerOf(p);
+  const own = !Object.keys(sleeper.users).length ? '' : (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">mein Team</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
+  const [tcls, tlabel] = p.score != null ? tierOf(p.score) : ['', ''];
+  const slPos = sp && sp.fantasy_positions ? sp.fantasy_positions.map(x => SLPOS_DE[x] || x).join(' / ') : '';
+  let h = `<div class="pvname"><span class="p-${p.pos}">${esc(p.name)}</span></div>
+    <div class="pvsub"><b style="color:var(--text)">${esc(teams[p.teamId].name)}</b>${sp && sp.number ? `<span>#${sp.number}</span>` : ''}<span>${POS_DE[p.pos]}</span>${sp && sp.age ? `<span>${sp.age} J.</span>` : ''}${sp && sp.birth_country ? `<span>${esc(sp.birth_country)}</span>` : ''}${own}</div>`;
+  h += `<div class="pvkpi">
+    <div><span class="score ${tcls}">${p.score ?? '–'}</span><small>Score · ${tlabel}</small></div>
+    <div><b>${fmt(p.prog,1)}</b><small>Prognose 4 Sp.</small></div>
+    <div><b>${fmt(p.xfp,1)}</b><small>xFP (${fmt(p.floor,0)}–${fmt(p.ceil,0)})</small></div>
+    <div><b>${p.xMin != null ? Math.round(p.xMin) : '–'}</b><small>xMin</small></div>
+    <div><b>${fmt(p.l10,1)}</b><small>Ø Pkt L10</small></div></div>`;
+
+  // Rating-Aufschlüsselung
+  h += `<div class="pvsec"><h3>Score – woraus er besteht</h3><div class="pvcomp">`;
+  for(const k of Object.keys(SCORE_DEFAULT)){
+    if(!(scoreW[k] > 0)) continue;
+    const v = p.comp && p.comp[k] != null ? Math.round(p.comp[k]*100) : null;
+    const col = v == null ? 'var(--line)' : v >= 70 ? 'var(--accent)' : v >= 40 ? 'var(--accent2)' : 'var(--bad)';
+    h += `<div>${SCORE_SHORT[k]} <span class="w">${scoreW[k]}%</span></div><div class="v">${v ?? '–'}</div><div><span class="bar"><i style="width:${v||0}%;background:${col}"></i></span></div><div class="why">${esc(compWhy(p,k))}</div>`;
+  }
+  h += `</div><div class="nodata" style="margin-top:6px">Jeder Baustein 0–100 im Vergleich zu allen ${POS_PL[p.pos]}; der Score ist der gewichtete Durchschnitt.</div></div>`;
+
+  // Fitness & Gesundheit
+  const [acls, alabel] = availBadge(p, sp);
+  h += `<div class="pvsec"><h3>Fitness & Gesundheit</h3><div style="margin-bottom:8px"><span class="pvst ${acls}">${esc(alabel)}</span></div><div class="pvfacts">`;
+  if(sp && sp.injury_status){
+    if(sp.injury_body_part) h += `<div><span>Verletzung</span>${esc(sp.injury_body_part)}</div>`;
+    if(md.soccer_injury_status_started_at) h += `<div><span>Status seit</span>${fmtDate(+md.soccer_injury_status_started_at)}</div>`;
+    if(md.soccer_injury_missing_since) h += `<div><span>fehlt seit</span>${fmtDate(md.soccer_injury_missing_since)}</div>`;
+    h += `<div><span>voraussichtliche Rückkehr</span>${md.soccer_injury_return_date ? fmtDate(md.soccer_injury_return_date) : 'unbekannt'}</div>`;
+    if(sp.injury_notes) h += `<div style="grid-column:1/-1"><span>Notiz</span>${esc(sp.injury_notes)}</div>`;
+  }
+  h += `<div><span>Premier-League-Status</span>${({ a:'verfügbar', d:'fraglich', i:'verletzt', s:'gesperrt', u:'nicht verfügbar', n:'nicht verfügbar' })[p.status] || p.status}${p.chance != null ? ` · ${p.chance}% Einsatzchance` : ''}</div>`;
+  if(p.news) h += `<div style="grid-column:1/-1"><span>PL-Meldung</span>${esc(p.news)}</div>`;
+  h += `</div></div>`;
+
+  // News
+  const ki = kiOf(p);
+  h += `<div class="pvsec"><h3>News</h3>`;
+  if(ki) h += `<div class="pvnews ki"><b>KI-Einschätzung: ${ki.r}/100</b><small>${new Date(ki.ts).toLocaleString('de-CH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</small><p>${esc(ki.t)}</p></div>`;
+  h += `<div id="pvNews"><div class="nodata">Sleeper-News werden geladen …</div></div>`;
+  if(ki && ki.n && ki.n.length) h += `<div class="nodata" style="margin-top:8px">Schlagzeilen: ${ki.n.map(n => `${esc(n.date)} ${esc(n.title)} (${esc(n.source)})`).join(' · ')}</div>`;
+  h += `</div>`;
+
+  // Rolle im Team / Wechsel
+  const i = p.inv;
+  const minL10 = p.log && p.log.length ? p.log.reduce((t,g)=>t+g.min,0) / p.log.length : null;
+  h += `<div class="pvsec"><h3>Rolle im Team & Wechsel</h3><div class="pvfacts">
+    <div><span>Startelf</span>${p.log ? `${p.log.filter(g=>g.start).length} von ${p.log.length} Spielen` : '–'}</div>
+    <div><span>Minuten Ø letzte 5 / 10</span>${Math.round(p.minL5)} / ${minL10 != null ? Math.round(minL10) : '–'} ${minL10 != null ? (p.minL5 > minL10 + 8 ? '↗ steigend' : p.minL5 < minL10 - 8 ? '↘ sinkend' : '→ stabil') : ''}</div>
+    <div><span>Positionen in Sleeper</span>${esc(slPos || '–')}${sp ? '' : ' (nicht zugeordnet)'}</div>
+    <div><span>Im Klub seit</span>${sp && sp.team_changed_at ? fmtDate(sp.team_changed_at) + (Date.now() - sp.team_changed_at < 60*864e5 ? ' <b style="color:var(--warn)">· neu</b>' : '') : 'kein Wechsel erfasst'}</div>
+    <div><span>Standards</span>${p.setPieces && p.setPieces.length ? esc(p.setPieces.join(', ')) : '–'}</div>
+    <div><span>Sleeper-Trend (24 h)</span><b id="pvTrend" style="font-weight:400">…</b></div>
+  </div></div>`;
+
+  // Einbindung
+  h += `<div class="pvsec"><h3>Einbindung – wie oft angespielt (pro 90 Min.)</h3>`;
+  if(i){
+    const tr = i.p90l3 != null ? (i.p90l3 > i.p90 * 1.1 ? '↗ mehr eingebunden' : i.p90l3 < i.p90 * 0.9 ? '↘ weniger eingebunden' : '→ stabil') : '';
+    h += `<div class="pvfacts">
+      <div><span>Pässe (Ballkontakte im Spielaufbau)</span>${fmt(i.p90,0)}${i.p90l3 != null ? ` · letzte 3: ${fmt(i.p90l3,0)} ${tr}` : ''}</div>
+      <div><span>Key Passes</span>${fmt(i.kp90,2)}</div>
+      <div><span>Schüsse</span>${fmt(i.sat90,2)}</div>
+      <div><span>${p.pos === 'GKP' ? 'Paraden' : 'Tackles gewonnen + Interceptions'}</span>${fmt(p.pos === 'GKP' ? i.sv90 : i.def90,2)}</div>
+      <div><span>Rang unter allen ${POS_PL[p.pos]}</span>${p.comp && p.comp.inv != null ? 'besser als ' + Math.round(p.comp.inv*100) + '%' : '–'}</div>
+      <div><span>Basis</span>${i.games} Spiele, ${Math.round(i.min)} Min.</div></div>`;
+  } else h += `<div class="nodata">Noch zu wenig Einsatzminuten in Sleeper-Stats.</div>`;
+  h += `</div>`;
+
+  // Letzte Spiele
+  const rs = (sleeper.rawStats || {})[p.id] || {};
+  if(p.log && p.log.length){
+    const oppOf = gw => { const f = allFixtures.find(f => f.event === gw && (f.team_h === p.teamId || f.team_a === p.teamId)); return f ? (f.team_h === p.teamId ? teams[f.team_a]?.short : (teams[f.team_h]?.short||'') + ' (a)') : ''; };
+    h += `<div class="pvsec"><h3>Letzte Spiele</h3><div style="overflow-x:auto"><table class="pvgames"><thead><tr><th class="l">GW</th><th class="l">Gegner</th><th>Min</th><th>Pkt</th><th>Pässe</th><th>KP</th><th>Sch.</th><th>${p.pos==='GKP'?'Par.':'Tkl+Int'}</th></tr></thead><tbody>` +
+      [...p.log].reverse().map(g => { const x = rs[g.gw] || {};
+        return `<tr><td class="l">${g.gw}</td><td class="l">${esc(oppOf(g.gw)||'')}</td><td>${g.min}${g.start ? '' : '<span style="color:var(--muted)">*</span>'}</td><td><b>${fmt(g.pts,0)}</b></td><td>${x.p_att ?? '–'}</td><td>${x.kp ?? (x.min ? 0 : '–')}</td><td>${x.sat ?? (x.min ? 0 : '–')}</td><td>${p.pos==='GKP' ? (x.sv ?? (x.min?0:'–')) : (x.min ? (x.tkw||0)+(x.int||0) : '–')}</td></tr>`; }).join('') +
+      `</tbody></table></div><div class="nodata">* eingewechselt · Pkt = echte Punkte nach eurer Liga-Wertung</div></div>`;
+  }
+
+  // Nächste Spiele
+  if(p.progParts && p.progParts.length){
+    const att = p.pos === 'FWD' || p.pos === 'MID';
+    h += `<div class="pvsec"><h3>Nächste Spiele – Prognose</h3>` + p.progParts.map(x =>
+      `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);font-size:13px"><span>GW${x.gw} ${x.home?'vs':'@'} <b>${esc(teams[x.opp]?.name||'?')}</b> <span style="color:var(--muted);font-size:11px">${att ? 'Team-Tore '+fmt(x.tore,1) : 'Zu-Null '+Math.round(x.cs*100)+'%'} · ${Math.round(x.w*100)}%</span></span><b>${fmt(x.pts,1)}</b></div>`).join('') + `</div>`;
+  }
+
+  // Saison
+  h += `<div class="pvsec"><h3>Saison</h3><div class="pvfacts" style="grid-template-columns:repeat(4,1fr)">
+    <div><span>Minuten</span>${p.minutes}</div><div><span>Tore / xG</span>${p.goals} / ${fmt(p.xg,1)}</div><div><span>Assists / xA</span>${p.assists} / ${fmt(p.xa,1)}</div><div><span>Punkte</span>${fmt(p.ptsReal ?? p.pts,0)}</div>
+    <div><span>Pkt/90</span>${fmt(p.pts90,1)}</div><div><span>Zu-Null</span>${p.cs ?? '–'}</div><div><span>Gelb / Rot</span>${p.yellow ?? 0} / ${p.red ?? 0}</div><div><span>${p.pos==='GKP'?'Paraden':'Pkt/90 erwartet'}</span>${p.pos==='GKP' ? (p.saves ?? '–') : fmt(p.xpts90,1)}</div></div></div>`;
+
+  h += `<div class="pvbtns"><button data-pvsel="${p.id}">${state.selected.has(p.id) ? '− aus Vergleich entfernen' : '⇄ in Vergleich aufnehmen'}</button><button data-pvcoach="${p.id}">💬 Coach fragen</button><button class="ghost" data-pvclose>Schliessen</button></div>`;
+  return h;
+}
+const slNewsCache = {};
+async function loadSlNews(p){
+  const sid = (sleeper.sidByFpl || {})[p.id], el = () => pvId === p.id ? $('pvNews') : null;
+  if(!sid){ if(el()) el().innerHTML = '<div class="nodata">Spieler ist in Sleeper nicht zugeordnet.</div>'; return; }
+  try {
+    const arr = slNewsCache[sid] ||= await getJSON(`/api/sl/players/clubsoccer/${sid}/news`);
+    const list = (Array.isArray(arr) ? arr : []).sort((a,b) => b.published - a.published).slice(0, 5);
+    if(!el()) return;
+    el().innerHTML = list.length ? list.map((n, k) => { const m = n.metadata || {};
+      return `<div class="pvnews"><b>${esc(m.title || '')}</b><small>${fmtDate(n.published)} · ${esc(n.source || 'Sleeper')}</small><p>${esc(m.description || '')}</p>${m.analysis ? `<details${k===0?' open':''}><summary>Einschätzung</summary>${esc(m.analysis)}</details>` : ''}</div>`; }).join('') +
+      '<div class="nodata">Sleeper-News (Rotowire, englisch). Der KI-Bot liest sie mit und bewertet sie für den Score.</div>'
+      : '<div class="nodata">Keine Sleeper-News zu diesem Spieler.</div>';
+  } catch(e){ if(el()) el().innerHTML = '<div class="nodata">Sleeper-News gerade nicht erreichbar.</div>'; }
+}
+async function loadTrend(p){
+  const sid = (sleeper.sidByFpl || {})[p.id];
+  try {
+    if(!sleeper.trend){
+      const [a, d] = await Promise.all(['add','drop'].map(t => getJSON(`/api/sl/players/clubsoccer:epl/trending/${t}?lookback_hours=24&limit=300`).catch(() => [])));
+      const m = arr => Object.fromEntries((arr||[]).map(x => [x.player_id, x.count]));
+      sleeper.trend = { add: m(a), drop: m(d) };
+    }
+    if(pvId !== p.id || !$('pvTrend')) return;
+    const ad = sid ? sleeper.trend.add[sid] || 0 : 0, dr = sid ? sleeper.trend.drop[sid] || 0 : 0;
+    $('pvTrend').innerHTML = !sid ? '–' : (ad || dr) ? `<span style="color:var(--accent)">+${ad}</span> geholt · <span style="color:var(--bad)">−${dr}</span> abgegeben` : 'kaum Bewegung';
+  } catch(e){ if($('pvTrend')) $('pvTrend').textContent = '–'; }
+}
+function openPlayer(id, push = true){
+  const p = players.find(x => x.id === id); if(!p) return;
+  pvId = id; $('pvBody').innerHTML = playerSheet(p); $('pv').hidden = false; $('pv').scrollTop = 0;
+  document.body.classList.add('noscroll');
+  if(push && !(history.state && history.state.pv)) history.pushState({ pv: id }, '');
+  loadSlNews(p); loadTrend(p);
+}
+function closePlayer(fromPop){
+  if($('pv').hidden) return;
+  $('pv').hidden = true; document.body.classList.remove('noscroll'); pvId = null;
+  if(!fromPop && history.state && history.state.pv) history.back();
+}
+window.addEventListener('popstate', () => closePlayer(true));
+window.plOpenPlayer = openPlayer;
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closePlayer(); });
+$('pv').addEventListener('click', e => {
+  if(e.target === $('pv') || e.target.closest('[data-pvclose]')) return closePlayer();
+  const sb = e.target.closest('[data-pvsel]'); if(sb){ toggleSelect(+sb.dataset.pvsel); sb.textContent = state.selected.has(+sb.dataset.pvsel) ? '− aus Vergleich entfernen' : '⇄ in Vergleich aufnehmen'; return; }
+  const cb = e.target.closest('[data-pvcoach]'); if(cb){ const p = players.find(x => x.id === +cb.dataset.pvcoach); closePlayer();
+    $('tabs').querySelector('[data-tab=coach]').click(); $('chatIn').value = `Wie steht es aktuell um ${p.full} (${teams[p.teamId].name})? Fitness, Rolle, News und ob ich ihn aufstellen/holen soll.`; refreshPreview(); $('chatIn').focus(); }
+});
+document.addEventListener('click', e => { const a = e.target.closest('[data-pv]'); if(a){ e.preventDefault(); openPlayer(+a.dataset.pv); } });
+
 /* ---------- Events ---------- */
 $('q').addEventListener('input', e => { state.q = e.target.value; renderTable(); });
 $('posSeg').addEventListener('click', e => {
@@ -1625,8 +1902,8 @@ $('scoring').addEventListener('input', e => {
   const k = e.target.dataset.sk; if(!k) return;
   scoring[k] = num(e.target.value); store.set('scoring', scoring); renderAll();
 });
-$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW3', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
-$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW3', scoreW); renderAll(); });
+$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW4', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
+$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW4', scoreW); renderAll(); });
 $('meSel').addEventListener('change', e => {
   sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); store.set('me', sleeper.me);
   const u = new URL(location.href); if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me'); history.replaceState(null,'',u);
@@ -1666,15 +1943,23 @@ $('colList').addEventListener('click', e => {
 });
 $('colReset').addEventListener('click', () => { try { localStorage.removeItem('plscout_'+colKey()); } catch(e){} colCfg = loadColCfg(); saveCols(); });
 $('cmpPill').addEventListener('click', () => $('cmpCard').scrollIntoView({ behavior:'smooth', block:'start' }));
-// Zeile antippen/anklicken markiert sie sofort (Spieler werden in allen Tabellen mitmarkiert)
+// Zeile antippen/anklicken markiert sie sofort (Spieler werden in allen Tabellen mitmarkiert); Doppeltipp öffnet das Profil
+let lastTap = {};
 document.addEventListener('click', e => {
-  if(e.target.closest('input,button,a,select,summary,label')) return;
+  if(e.target.closest('input,button,a,select,summary,label,#pv')) return;
   const tr = e.target.closest('tbody tr'); if(!tr || tr.querySelector('th')) return;
   const pid = tr.dataset.pid, owner = tr.dataset.owner;
   if(owner != null){
     state.hlOwner = state.hlOwner === owner ? null : owner;
     document.querySelectorAll('#lgBody tr').forEach(r => r.classList.toggle('hl', r.dataset.owner === state.hlOwner));
   } else if(pid != null){
+    const now = Date.now();
+    if(lastTap.pid === pid && now - lastTap.t < 380){ // Doppelklick/-tipp → Profil, Markierung bleibt wie vorher
+      state.selected = new Set(lastTap.snap); lastTap = {};
+      document.querySelectorAll('tbody tr[data-pid]').forEach(r => r.classList.toggle('hl', state.selected.has(+r.dataset.pid)));
+      renderCompare(); renderCmpPill(); openPlayer(+pid); return;
+    }
+    lastTap = { pid, t: now, snap: [...state.selected] };
     toggleSelect(+pid);
   } else {
     const on = !tr.classList.contains('hl');
