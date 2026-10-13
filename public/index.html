@@ -200,6 +200,8 @@ td.muted{color:var(--muted)}
   .roster .kpis{gap:10px}
   #calibTable .mdt td,#calibTable .mdt th{padding:3px 4px;font-size:11px}
 }
+.otag{font-size:10px;font-weight:600;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:2px;white-space:nowrap}
+.otag.free{color:var(--accent);border-color:#1f6a4b}.otag.me{color:var(--accent2);border-color:#24507f}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -1165,10 +1167,10 @@ const COLDEFS = [
 ];
 const COL_DEFAULT_ORDER = COLDEFS.map(c => c.k);
 const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
-const MOBILE_COLS = ['name','score','prog','xfp','owner'];
-const colKey = () => isMobile() ? 'colsM' : 'cols';
+const MOBILE_COLS = ['name','score','prog','xfp','l10'];
+const colKey = () => isMobile() ? 'colsM2' : 'cols2';
 const loadColCfg = () => {
-  const c = store.get(colKey()) || (isMobile() ? { order: [...MOBILE_COLS, ...COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k))], hidden: COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k)) } : {});
+  const c = store.get(colKey()) || (isMobile() ? { order: [...MOBILE_COLS, ...COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k))], hidden: COLDEFS.map(x=>x.k).filter(k=>!MOBILE_COLS.includes(k)) } : { hidden: ['owner'] });
   const order = (c.order || []).filter(k => COL_DEFAULT_ORDER.includes(k));
   for(const k of COL_DEFAULT_ORDER) if(!order.includes(k)) order.push(k);
   return { order, hidden: (c.hidden || []).filter(k => k !== 'name') };
@@ -1183,7 +1185,10 @@ const COLS = COLDEFS; // für Sortier-Logik
 function nameCell(p){
   const news = p.news ? `<span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
   const opp = (p.next||[]).slice(0,3).map(f => `<span class="d${f.d}" title="GW ${f.gw}">${esc(teams[f.opp]?.short||'?')}${f.home?'':'(a)'}</span>`).join('');
-  return `<div class="nm"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}</div>
+  const o = Object.keys(sleeper.users).length ? ownerOf(p) : undefined;
+  const own = o === undefined && !Object.keys(sleeper.users).length ? '' :
+    (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
+  return `<div class="nm"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${own}${news}${spHtml(p)}</div>
     <div class="sub"><b>${esc(teams[p.teamId].short)}</b><span class="fdr sm">${opp}</span></div>`;
 }
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
