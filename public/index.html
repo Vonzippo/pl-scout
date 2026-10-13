@@ -157,6 +157,8 @@ td.muted{color:var(--muted)}
 .collist li{display:flex;justify-content:space-between;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 8px}
 .collist button{padding:2px 8px;margin-left:4px}
 #cmpPill{position:fixed;right:16px;bottom:16px;z-index:20;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.databar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-6px 0 12px}
+.databar button{font-size:12px;padding:4px 10px}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -172,6 +174,9 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 </header>
 <main>
   <div class="status" id="status">Lade Spielerdaten …</div>
+  <div class="databar" id="dataBar"><span id="dataSummary">Daten werden geladen …</span>
+    <button class="ghost" id="refreshBtn">↻ Aktualisieren</button><button class="ghost" id="dataBtn">Details</button></div>
+  <div class="card" id="dataPanel" hidden style="margin-bottom:12px"></div>
 
   <div class="tabs" id="tabs"><button data-tab="players" class="on">Spieler</button><button data-tab="teams">Teams</button><button data-tab="coach">✨ KI-Coach</button></div>
 
@@ -641,7 +646,8 @@ function kiHtml(p){
   return `<span class="score ${cls}" title="${esc('KI ('+when+'): '+r.t)}">${r.r}</span>`;
 }
 async function loadKi(){
-  try { kiData = await getJSON('/api/ki/ratings'); } catch(e){ kiData = { ratings:{}, meta:{} }; }
+  try { kiData = await getJSON('/api/ki/ratings'); dataStatus.ki = { at: Date.now(), ok: true, info: `${Object.keys(kiData.ratings||{}).length} Spieler, letzter Bot-Lauf ${hhmm(kiData.meta?.lastRun)}` }; }
+  catch(e){ kiData = { ratings:{}, meta:{} }; dataStatus.ki = { at: Date.now(), ok: false, info: 'nicht erreichbar' }; }
   renderKiStatus();
 }
 function renderKiStatus(){
@@ -756,29 +762,33 @@ async function loadSleeperStats(){
   if(sleeper.real || !sleeper.scoringSettings || !sleeper.matchPid) return;
   const ss = sleeper.scoringSettings;
   let season = new Date().getFullYear(), week = Math.max(1, (nextGw || 2) - 1);
-  try { const st = await getJSON('/api/sleeper/state/clubsoccer:epl'); season = +st.season || season; week = +st.week || week; } catch(e){}
+  try { const st = await getJSON('/api/sl/state/clubsoccer:epl'); season = +st.season || season; week = +st.week || week; } catch(e){}
   const weeks = Array.from({ length: week }, (_, i) => i + 1);
-  const res = await Promise.allSettled(weeks.map(w => getJSON(`/api/sleeperstats/stats/clubsoccer:epl/${season}/${w}?season_type=regular`)));
-  const real = {}, have = [];
+  const res = await Promise.allSettled(weeks.map(w => getJSON(`/api/sl/stats/clubsoccer:epl/${season}/${w}?season_type=regular`)));
+  const real = {}, have = [], unm = {};
   res.forEach((r, i) => {
     if(r.status !== 'fulfilled' || !Array.isArray(r.value) || !r.value.length) return;
     have.push(weeks[i]);
     for(const e of r.value){
       if(!e || !e.stats || !num(e.stats.min)) continue;
-      const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue;
+      const fid = sleeper.matchPid(String(e.player_id));
+      if(fid == null){ const pp = leaguePoints(e.stats, ss); if(pp) unm[e.player_id] = { name: `${e.player?.first_name||''} ${e.player?.last_name||''}`.trim(), team: e.player?.team_abbr || '', pts: (unm[e.player_id]?.pts || 0) + pp }; continue; }
       const cur = (real[fid] ||= {})[weeks[i]];
       const add = { pts: leaguePoints(e.stats, ss), min: num(e.stats.min), gs: num(e.stats.gs) };
       (real[fid])[weeks[i]] = cur ? { pts: cur.pts + add.pts, min: cur.min + add.min, gs: Math.max(cur.gs, add.gs) } : add; // Doppelspieltag
     }
   });
   sleeper.real = real; sleeper.realWeeks = have;
+  sleeper.unmatchedStats = Object.values(unm).sort((a,b) => b.pts - a.pts);
+  dataStatus.stats = { at: Date.now(), ok: have.length > 0, info: `Spieltage ${have.length ? have[0]+'–'+have[have.length-1] : '–'} · ${Object.keys(real).length} Spieler mit echten Punkten` };
   // Sleeper-Prognose für den nächsten Spieltag
   try {
-    const pr = await getJSON(`/api/sleeperstats/projections/clubsoccer:epl/${season}/${nextGw}?season_type=regular`);
+    const pr = await getJSON(`/api/sl/projections/clubsoccer:epl/${season}/${nextGw}?season_type=regular`);
     const proj = {};
     for(const e of pr || []){ if(!e || !e.stats) continue; const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue; proj[fid] = (proj[fid] || 0) + leaguePoints(e.stats, ss); }
     sleeper.proj = proj;
-  } catch(e){ sleeper.proj = null; }
+    dataStatus.proj = { at: Date.now(), ok: Object.keys(proj).length > 0, info: `GW ${nextGw}: ${Object.keys(proj).length} Spieler` };
+  } catch(e){ sleeper.proj = null; dataStatus.proj = { at: Date.now(), ok: false, info: 'nicht verfügbar' }; }
 }
 async function calibrate(){
   if(calibRunning || sleeper.calibrated || !sleeper.scoringSettings || !histById || !sleeper.matchPid) return;
@@ -858,6 +868,49 @@ function renderCalib(){
     `</tbody></table><div class="empty" style="margin-top:6px">Format: echte Sleeper-Punkte (Berechnung der Seite). Orange = Abweichung über 4 Punkte.</div>`;
 }
 
+/* ---------- Daten-Check & automatische Aktualisierung ---------- */
+const dataStatus = {};
+let gwState = null, lastRefresh = 0, refreshing = false;
+const hhmm = t => t ? new Date(t).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '–';
+function renderDataStatus(){
+  const bar = $('dataBar'); if(!bar) return;
+  const src = [['fpl','Premier-League-Stats'],['sleeper','Sleeper-Liga & Kader'],['stats','Echte Sleeper-Punkte'],['proj','Sleeper-Prognose'],['ki','KI-Bewertungen']];
+  const problems = src.filter(([k]) => dataStatus[k] && !dataStatus[k].ok).length;
+  const unm = (sleeper.unmatched || []).length;
+  const gw = gwState ? (gwState.checked ? `GW ${gwState.id} ausgewertet` : `GW ${gwState.id} läuft – Punkte live`) : '';
+  const okAll = !problems && !unm;
+  $('dataSummary').innerHTML = `${refreshing ? '⏳ aktualisiere …' : (okAll ? '✅' : '⚠️')} Daten-Stand <b>${hhmm(lastRefresh)}</b>${gw ? ' · '+gw : ''}${problems ? ` · <span style="color:var(--warn)">${problems} Quelle(n) mit Problem</span>` : ''}${unm ? ` · <span style="color:var(--warn)">${unm} Spieler nicht zugeordnet</span>` : ''}`;
+  $('dataPanel').innerHTML = `<table class="mdt"><tbody><tr><th>Quelle</th><th>Stand</th><th>Status</th></tr>${src.map(([k,l]) => {
+      const d = dataStatus[k]; return `<tr><td>${l}</td><td>${d ? hhmm(d.at) : '–'}</td><td>${!d ? '–' : (d.ok ? '✅ ' : '⚠️ ')}${esc(d?.info || '')}</td></tr>`; }).join('')}</tbody></table>
+    <p class="empty">Die Seite aktualisiert alle Daten automatisch alle 10 Minuten und sobald du zur Seite zurückkehrst. Echte Punkte kommen direkt aus den Sleeper-Stats und sind damit exakt. Fällt eine Quelle kurz aus, wird die letzte gültige Kopie verwendet.</p>
+    ${unm ? `<p><b>Nicht zugeordnete Kaderspieler</b> (bekommen keine Stats):</p><ul>${sleeper.unmatched.map(u => `<li>${esc(u.name)} ${u.team ? '('+esc(u.team)+')' : ''} – ${esc(u.owner)}</li>`).join('')}</ul>` : '<p>✅ Alle Kaderspieler sind zugeordnet.</p>'}
+    ${(sleeper.unmatchedStats || []).length ? `<details><summary class="empty" style="cursor:pointer">${sleeper.unmatchedStats.length} weitere Spieler mit Sleeper-Punkten ohne Zuordnung (meist neue/abgewanderte Spieler)</summary><p class="empty">${sleeper.unmatchedStats.slice(0,40).map(u => `${esc(u.name)} ${esc(u.team)} (${fmt(u.pts,1)})`).join(' · ')}</p></details>` : ''}`;
+}
+async function refreshAll(){
+  if(refreshing) return;
+  refreshing = true; renderDataStatus();
+  try {
+    await loadFPL();
+    await loadHistory();
+    const lid = $('leagueId').value.trim();
+    if(lid){
+      sleeper.real = null; sleeper.proj = null; sleeper.calibrated = false; calib = null;
+      await loadSleeper(lid);
+      await calibrate();
+    }
+    await loadKi();
+    lastRefresh = Date.now();
+    renderAll();
+  } catch(e){
+    console.warn('Aktualisierung', e);
+    dataStatus.fpl = { ...(dataStatus.fpl || {}), ok: false, info: 'Aktualisierung fehlgeschlagen – zeige letzten Stand' };
+  } finally { refreshing = false; renderDataStatus(); }
+}
+function maybeRefresh(maxAgeMin){ if(!refreshing && lastRefresh && document.visibilityState === 'visible' && Date.now() - lastRefresh > maxAgeMin * 60e3) refreshAll(); }
+setInterval(() => maybeRefresh(10), 60e3);
+document.addEventListener('visibilitychange', () => maybeRefresh(5));
+window.addEventListener('focus', () => maybeRefresh(5));
+
 /* ---------- Daten laden ---------- */
 async function loadFPL(){
   const [boot, fixtures] = await Promise.all([
@@ -896,18 +949,23 @@ async function loadFPL(){
     penOrder:e.penalties_order, fkOrder:e.direct_freekicks_order, cornerOrder:e.corners_and_indirect_freekicks_order
   }));
 
-  const tsel = $('team');
+  const tsel = $('team'); const keep = tsel.value;
+  tsel.innerHTML = '<option value="">Alle Klubs</option>';
   Object.entries(teams).sort((a,b)=>a[1].name.localeCompare(b[1].name))
     .forEach(([id,t]) => tsel.insertAdjacentHTML('beforeend', `<option value="${id}">${esc(t.name)}</option>`));
+  tsel.value = keep;
+  const cur = ev.find(e => e.is_current);
+  gwState = cur ? { id: cur.id, finished: cur.finished, checked: cur.data_checked } : null;
+  dataStatus.fpl = { at: Date.now(), ok: true, info: `${players.length} Spieler · ${gamesPlayed} Spieltage ausgewertet` };
 }
 
 async function loadSleeper(leagueId){
   setStatus('Lade Sleeper-Liga …');
-  const league = await getJSON(`/api/sleeper/league/${encodeURIComponent(leagueId)}`);
+  const league = await getJSON(`/api/sl/league/${encodeURIComponent(leagueId)}`);
   if(!league || !league.league_id) throw new Error('Liga nicht gefunden – League-ID prüfen.');
   const [rosters, users] = await Promise.all([
-    getJSON(`/api/sleeper/league/${leagueId}/rosters`),
-    getJSON(`/api/sleeper/league/${leagueId}/users`)
+    getJSON(`/api/sl/league/${leagueId}/rosters`),
+    getJSON(`/api/sl/league/${leagueId}/users`)
   ]);
   const sport = league.sport || 'nfl';
   // Sleeper führt EPL-Spieler unter "clubsoccer:epl"; je nach Liga steht im Feld sport nur "clubsoccer"
@@ -948,30 +1006,44 @@ async function loadSleeper(leagueId){
   };
   sleeper.ownerByFpl = {}; sleeper.fplBySleeper = {}; sleeper.sp = {}; sleeper.slByFpl = {};
   const matchCache = {};
+  // Zuordnung Sleeper → Premier League: Namens-Bausteine + Klub + Position (robust gegen Kurz-/Langnamen wie «Bruno G.», «Ben White»)
+  const toks = x => norm(x).split(' ').filter(Boolean);
+  const fplTok = new Map(players.map(p => [p.id, new Set([...toks(p.full), ...toks(p.name)])]));
   const matchPid = pid => {
     if(pid in matchCache) return matchCache[pid];
     const s = sp[pid]; if(!s) return (matchCache[pid] = null);
     const abbr = s.team_abbr || (isNaN(+s.team) ? s.team : '');
     const spos = SPOS[(s.fantasy_positions||[])[0] || s.position] || '';
     const full = norm(s.full_name || `${s.first_name||''} ${s.last_name||''}`);
-    const last = norm(s.last_name || full.split(' ').pop());
+    if(!full) return (matchCache[pid] = null);
+    const ft = full.split(' ');
+    const last = norm(s.last_name || ft[ft.length-1]).split(' ').pop();
     const pool = new Set([...(byFull[full]||[]), ...(byLast[last]||[]), ...(byLast[full]||[])]);
+    if(abbr) players.forEach(p => { if(teamMatch(p, abbr)) pool.add(p); });
     if(!pool.size) players.filter(p => norm(p.full).endsWith(' '+last)).forEach(p => pool.add(p));
-    let best = null, bestScore = -1;
+    let best = null, bestScore = -1, second = -1;
     for(const c of pool){
-      let sc = 0;
-      if(norm(c.full)===full) sc += 4; else if(norm(c.name)===full) sc += 3; else sc += 1;
+      const ct = fplTok.get(c.id);
+      const overlap = ft.filter(t => t.length > 1 && ct.has(t)).length;
+      const initials = toks(c.name).filter(t => t.length === 1 && ft.some(f => f !== t && f.startsWith(t))).length; // «Bruno G.»
+      const exact = norm(c.full) === full || norm(c.name) === full;
+      const lastHit = ct.has(last);
+      if(!exact && !lastHit && overlap < 2 && !(overlap >= 1 && initials)) continue;
+      let sc = (exact ? 6 : 0) + overlap * 2 + initials + (lastHit ? 1 : 0);
       if(teamMatch(c, abbr)) sc += 3;
-      if(spos && c.pos===spos) sc += 1;
-      if(sc > bestScore){ best = c; bestScore = sc; }
+      if(spos && c.pos === spos) sc += 1;
+      if(sc > bestScore){ second = bestScore; best = c; bestScore = sc; } else if(sc > second) second = sc;
     }
-    return (matchCache[pid] = best && (bestScore >= 4 || pool.size === 1) ? best.id : null);
+    const ok = best && bestScore >= 5 && bestScore > second;
+    return (matchCache[pid] = ok ? best.id : null);
   };
   sleeper.matchPid = matchPid;
   sleeper.leagueId = leagueId; sleeper.scoringSettings = league.scoring_settings || null; sleeper.calibrated = false;
   let matched = 0, total = 0;
+  sleeper.unmatched = [];
   for(const [pid, owner] of Object.entries(ownerBySleeper)){
     total++;
+    if(!sp[pid] || sleeper.matchPid(pid) == null) sleeper.unmatched.push({ pid, name: sp[pid] ? (sp[pid].full_name || `${sp[pid].first_name||''} ${sp[pid].last_name||''}`).trim() || '(ohne Namen)' : pid, team: sp[pid]?.team_abbr || '', owner: sleeper.users[owner] || '' });
     const s = sp[pid];
     if(!s) continue;
     const abbr = s.team_abbr || (isNaN(+s.team) ? s.team : '');
@@ -999,6 +1071,7 @@ async function loadSleeper(leagueId){
   const msg = `Liga «${league.name}» geladen (${sport}) · ${matched}/${total} Kaderspieler zugeordnet` +
     (total && !matched ? ' – Spielerliste von Sleeper nicht verfügbar, Besitzer können nicht angezeigt werden.' : '');
   setStatus(msg, total && !matched);
+  dataStatus.sleeper = { at: Date.now(), ok: true, info: `${matched}/${total} Kaderspieler zugeordnet` };
 }
 
 /* ---------- Darstellung ---------- */
@@ -1396,7 +1469,7 @@ function renderScoring(){
     Object.keys(DEFAULT_SCORING).map(k =>
     `<label>${LABELS[k]}<input type="number" step="0.1" data-sk="${k}" value="${scoring[k] ?? 0}" ${league ? 'disabled' : ''}></label>`).join('');
 }
-function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); refreshPreview(); }
+function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); refreshPreview(); renderDataStatus(); }
 
 /* ---------- Events ---------- */
 $('q').addEventListener('input', e => { state.q = e.target.value; renderTable(); });
@@ -1443,6 +1516,8 @@ async function doLoadLeague(){
 }
 $('loadLeague').addEventListener('click', doLoadLeague);
 $('kiRun').addEventListener('click', runKiNow);
+$('refreshBtn').addEventListener('click', () => refreshAll());
+$('dataBtn').addEventListener('click', () => { const pnl = $('dataPanel'); pnl.hidden = !pnl.hidden; renderDataStatus(); });
 $('colBtn').addEventListener('click', () => { const pnl = $('colPanel'); pnl.hidden = !pnl.hidden; if(!pnl.hidden) renderColPanel(); });
 $('colList').addEventListener('change', e => {
   const k = e.target.dataset.colvis; if(!k) return;
@@ -1508,9 +1583,10 @@ $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeagu
     setStatus(`${players.length} Spieler geladen · lade Formdaten der letzten Spiele …`);
     renderAll();
     loadKi().then(renderAll);
-    loadHistory().then(() => {
+    loadHistory().then(async () => {
       renderAll();
-      calibrate();
+      await calibrate();
+      lastRefresh = Date.now(); renderDataStatus();
       setTimeout(sendWatchlist, 3000);
       if(!/Liga/.test($('status').textContent)) setStatus(`${players.length} Spieler geladen · Form aus ${histById.__gws.length} Spieltagen.`);
     }).catch(e => console.warn('Formdaten', e));
