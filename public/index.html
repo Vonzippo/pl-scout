@@ -184,7 +184,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <div id="teamsEmpty" class="card empty">Lade oben deine Sleeper-Liga, dann siehst du hier dein Team und die Teams deiner Mitspieler.</div>
     <div id="teamsBody" hidden>
       <div class="card lgtable" style="margin-bottom:12px">
-        <h2>Liga-Übersicht <span>Klick auf ein Team zeigt den Kader · Prognose = nächste <span id="hzLabel">3</span> Runden</span></h2>
+        <h2>Liga-Übersicht <span>Klick auf ein Team zeigt den Kader · Prognose = erwartete Punkte pro Spiel, nächste 4 Spiele (40/30/20/10 %)<span id="hzLabel" hidden></span></span></h2>
         <table><thead><tr><th class="l">#</th><th class="l">Team</th><th>Bilanz</th><th>Punkte</th><th>Prognose Startelf</th><th>Prognose Kader</th><th>Ø Pkt/90 Startelf</th><th>Ø Score Startelf</th></tr></thead><tbody id="lgBody"></tbody></table>
       </div>
       <div class="card" id="calibCard" style="margin-bottom:12px" hidden>
@@ -243,7 +243,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
       <option value="owned">Nur vergeben</option>
     </select>
     <label>Min. Minuten <input id="minMin" type="number" value="270" min="0" step="90" style="width:80px"></label>
-    <label>Prognose für <select id="horizon"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> Runden</label>
+    <select id="horizon" hidden><option selected>4</option></select>
     <label><input type="checkbox" id="fitOnly"> nur fit</label>
     <button class="ghost" id="colBtn">⚙️ Spalten</button>
   </div>
@@ -254,7 +254,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <button class="ghost" id="colReset">Standard wiederherstellen</button>
   </div>
   <div class="kibar"><span id="kiStatus">🤖 KI-Bot: lädt …</span><button class="ghost" id="kiRun" title="Bewertet die fälligen Spieler sofort (sonst automatisch alle 10 Minuten)">Jetzt bewerten</button></div>
-  <div class="legend">PL-Scout-Score: <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine · Namensfarbe = Position: <b class="p-GKP">TW</b> <b class="p-DEF">VER</b> <b class="p-MID">MIT</b> <b class="p-FWD">STU</b></div>
+  <div class="legend">Score (Spielerqualität): <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine · Namensfarbe = Position: <b class="p-GKP">TW</b> <b class="p-DEF">VER</b> <b class="p-MID">MIT</b> <b class="p-FWD">STU</b></div>
   <div class="tablewrap">
     <table>
       <thead><tr id="thead"></tr></thead>
@@ -277,22 +277,18 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   <details class="card" id="scoringCard" style="margin-bottom:12px">
     <summary>Einstellungen: Punkteregeln & Score-Gewichtung</summary>
     <div class="scoring" id="scoring"></div>
-    <h2 style="margin-top:16px">PL-Scout-Score – Gewichtung in % <span>wie stark jeder Baustein zählt</span></h2>
+    <h2 style="margin-top:16px">Score (Spielerqualität) – Gewichtung in % <span>wie stark jeder Baustein zählt</span></h2>
     <div class="scoring" id="scoreWeights"></div>
-    <details style="margin-top:8px"><summary class="empty" style="cursor:pointer">Wie wird der Score berechnet?</summary>
+    <details style="margin-top:8px"><summary class="empty" style="cursor:pointer">Wie werden Score und Prognose berechnet?</summary>
+      <p class="empty"><b>Score (0–100) = wie gut ein Spieler ist</b> – unabhängig vom Spielplan, verglichen mit Spielern derselben Position:</p>
       <ul class="empty" style="line-height:1.6;margin:6px 0">
-        <li><b>xFP:</b> erwartete Punkte im nächsten Spiel nach deinen Regeln – aus erwarteter Spielzeit, Tor-/Assist-Raten (xG/xA, inkl. Elfmeter-, Freistoss- und Eckball-Rolle), Stärke beider Teams (eigenes Torerwartungs-Modell), Heim/Auswärts, Zu-Null-Chance, Paraden und Karten.</li>
-        <li><b>Sleeper-Prognose:</b> die offizielle Projektion von Sleeper für den nächsten Spieltag, mit eurer Liga-Wertung gerechnet; fliesst zu 35 % ins xFP ein.</li>
-        <li><b>KI-Bewertung:</b> ein Bot liest täglich die Schlagzeilen zu jedem relevanten Spieler und vergibt 0–100 mit kurzer Begründung. Spieler ohne KI-Bewertung werden ohne diesen Baustein berechnet.</li>
-        <li><b>Form:</b> Punkte pro Spiel nach deinen Regeln in den letzten 10 Spielen, neuere Spiele zählen stärker.</li>
-        <li><b>Effizienz:</b> Punkte pro 90 Minuten über die Saison; bei wenig Einsatzzeit zum Positions-Schnitt hin geglättet (kein Glückstreffer-Bonus).</li>
-        <li><b>Einsatzzeit:</b> Minuten-Schnitt der letzten 5 Spiele (70%) und Startelf-Quote der letzten 10 (30%).</li>
-        <li><b>News & Fitness:</b> offizieller Verletzungs-/Sperrstatus und Einsatzwahrscheinlichkeit der Premier League, ergänzt um den Sleeper-Status. Verletzt/gesperrt drückt den Gesamtscore stark.</li>
-        <li><b>Gegner:</b> durchschnittliche Schwierigkeit der nächsten 3 Spiele.</li>
-        <li><b>Expected:</b> Punkte pro 90 Min., berechnet aus xG, xA und erwarteten Gegentoren – zeigt, ob die Leistung nachhaltig ist.</li>
+        <li><b>Form:</b> echte Punkte pro Spiel (eure Liga-Wertung) der letzten 10 Spiele, neuere zählen stärker.</li>
+        <li><b>Effizienz:</b> Punkte pro 90 Minuten über die Saison (bei wenig Einsatzzeit geglättet).</li>
+        <li><b>Expected:</b> Punkte pro 90 Min. aus xG, xA und erwarteten Gegentoren – zeigt, ob die Leistung nachhaltig ist.</li>
+        <li><b>Einsatzzeit:</b> Minuten der letzten 5 Spiele und Startelf-Quote – ist er Stammspieler?</li>
         <li><b>Trend:</b> letzte 3 Spiele im Vergleich zu den letzten 10.</li>
-        <li>Form, Effizienz, Expected und Trend werden <b>innerhalb der Position</b> verglichen (Perzentil), damit Torhüter, Verteidiger, Mittelfeld und Sturm fair bewertet werden.</li>
       </ul>
+      <p class="empty"><b>Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele</b>, gewichtet 40 % / 30 % / 20 % / 10 %. Pro Spiel fliessen ein: erwartete Minuten (inkl. Verletzungen/Sperren und KI-News), Tor-/Assist-Raten inkl. Standardrollen, Stärke von Gegner und eigenem Team, Heim/Auswärts, Zu-Null-Chance, aktuelle Form und für das nächste Spiel die offizielle Sleeper-Projektion. Antippen/Maus über die Prognose zeigt die 4 Spiele einzeln.</p>
     </details>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="ghost" id="resetScoring">Standard wiederherstellen</button>
@@ -338,7 +334,7 @@ let playedGwByTeam = {}, finishedGws = [], histById = null;
 let sleeper = { ownerByFpl: {}, fplBySleeper: {}, users: {}, me: '', rosters: [], sp: {} };
 const SPOS = {GK:'GKP',G:'GKP',D:'DEF',M:'MID',F:'FWD'};
 let view = 'players', teamA = '', teamB = '';
-const state = { hlPid:null, hlOwner:null, q:'', pos:'', team:'', avail:'', minMin:270, horizon:3, fitOnly:false, sort:'score', dir:-1, selected:new Set() };
+const state = { hlPid:null, hlOwner:null, q:'', pos:'', team:'', avail:'', minMin:270, horizon:4, fitOnly:false, sort:'score', dir:-1, selected:new Set() };
 
 const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
@@ -459,17 +455,28 @@ function computeXfp(){
     const LR = (s.lr && s.lr[p.pos]) || { min:0, xg:0, xa:0, tk:0, cbi:0, rec:0 };
     const def90 = per90(p, 'tackles', 'tackles') * (s.tackle + LR.tk) + per90(p, 'cbi', 'cbi') * (s.cbi + LR.cbi) + per90(p, 'recoveries', 'rec') * (s.recovery + LR.rec) + LR.min;
     const G = s['goal_'+p.pos] || 0, CS = s['cs_'+p.pos] || 0, GC = s['gc_'+p.pos] || 0, A = s['assist_'+p.pos] || 0;
-    const fxAll = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw && f.gw < nextGw + state.horizon);
+    const fxAll = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw).slice(0, 4); // nächste 4 Spiele
     const models = fxAll.map(f => ({ f, m: matchSetup(p, f) })).filter(x => x.m);
     const expPts = m => {
       const e90 = p.xMin / 90;
       return pStart * s.start + e90 * (xg90 * m.k * (G + LR.xg) + xa90 * m.k * (A + LR.xa) + sv90 * m.kAg * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-m.lamAg) * CS + e90 * m.lamAg * GC;
     };
-    p.proj = models.reduce((t,x) => t + expPts(x.m), 0);
+    // 15 % aktuelle Form (Punkte pro Spiel der letzten Spiele, nach Verfügbarkeit gewichtet)
+    const formPart = (p.l10 || 0) * Math.min(1, (p.xMin || 0) / Math.max(30, p.minL5 || 90));
+    p.slp = sleeper.proj ? sleeper.proj[p.id] : undefined;
+    // Prognose: erwartete Punkte der nächsten 4 Spiele, gewichtet 40/30/20/10
+    const PW = [0.4, 0.3, 0.2, 0.1];
+    p.progParts = models.map((x, i) => ({ gw: x.f.gw, opp: x.f.opp, home: x.f.home, w: PW[i], pts: 0.85 * expPts(x.m) + 0.15 * formPart,
+      tore: x.m.lamFor, gegentore: x.m.lamAg, cs: Math.exp(-x.m.lamAg) }));
+    const finishProg = () => {
+      const ws = p.progParts.reduce((t,x) => t + x.w, 0);
+      p.prog = ws ? p.progParts.reduce((t,x) => t + x.w * x.pts, 0) / ws : 0;
+      p.proj = p.prog;
+    };
     // Simulation nächster Spieltag
     const nextM = models.filter(x => x.f.gw === nextGw);
-    if(!nextM.length){ p.xfp = 0; p.floor = 0; p.ceil = 0; continue; }
+    if(!nextM.length){ p.xfp = 0; p.floor = 0; p.ceil = 0; finishProg(); continue; }
     const rnd = mulberry(p.id * 7919 + nextGw), N = 400, out = new Array(N);
     for(let i = 0; i < N; i++){
       let pts = 0;
@@ -492,23 +499,24 @@ function computeXfp(){
     }
     out.sort((a,b)=>a-b);
     const model = out.reduce((a,b)=>a+b,0) / N;
-    // 15 % aktuelle Form (Punkte pro Spiel der letzten Spiele, nach Verfügbarkeit gewichtet)
-    const formPart = (p.l10 || 0) * Math.min(1, (p.xMin || 0) / Math.max(30, p.minL5 || 90));
     p.xfp = 0.85 * model + 0.15 * formPart;
     // Prognose von Sleeper (Profi-Projektion, Liga-Wertung) zu 35 % einmischen, falls vorhanden
-    p.slp = sleeper.proj ? sleeper.proj[p.id] : undefined;
     if(p.slp != null) p.xfp = 0.65 * p.xfp + 0.35 * p.slp;
     const shift = p.xfp - model;
     p.floor = out[Math.floor(N * 0.15)] + shift; p.ceil = out[Math.floor(N * 0.85)] + shift;
-    p.proj += shift * nextM.length / Math.max(1, nextM.length);
+    // nächstes Spiel in der Prognose = xFP (inkl. Sleeper-Projektion)
+    const firstNext = p.progParts.filter(x => x.gw === nextGw);
+    firstNext.forEach(x => { x.pts = p.xfp / firstNext.length; });
+    finishProg();
   }
 }
 
 /* ---------- PL-Scout-Score ---------- */
-const SCORE_DEFAULT = { xfp:20, form:18, ki:12, eff:12, min:12, news:10, xs:8, fix:4, trend:4 };
-const SCORE_LABELS = { xfp:'xFP (erwartete Punkte nächstes Spiel)', ki:'KI-Bewertung (News-Bot)', form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Einsatzzeit aktuell', news:'News & Fitness', fix:'Gegner (nächste 3)', xs:'Expected (xG/xA-basiert)', trend:'Trend (letzte 3 vs. 10)' };
-const SCORE_SHORT = { xfp:'xFP', ki:'KI', form:'Form', eff:'Effizienz', min:'Minuten', news:'News', fix:'Gegner', xs:'Expected', trend:'Trend' };
-let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW2') || {});
+// Score = wie gut ein Spieler ist (unabhängig vom Spielplan); kurzfristiges steckt in der Prognose
+const SCORE_DEFAULT = { form:30, eff:25, xs:20, min:20, trend:5 };
+const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Einsatzzeit (Stammspieler?)', xs:'Expected (xG/xA-basiert)', trend:'Trend (letzte 3 vs. 10)' };
+const SCORE_SHORT = { form:'Form', eff:'Effizienz', xs:'Expected', min:'Einsatzzeit', trend:'Trend' };
+let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW3') || {});
 const N_FORM = 10;
 
 function liveToP(pos, st){
@@ -626,12 +634,11 @@ function computeScores(){
     }
   }
   // 3) Gewichtete Summe + Verfügbarkeits-Abschlag
-  const W = Object.entries(scoreW).filter(([k,v]) => v > 0);
+  const W = Object.entries(scoreW).filter(([k,v]) => v > 0 && k in SCORE_DEFAULT);
   for(const p of players){
     const Wp = W.filter(([k]) => p.comp[k] != null); // ohne KI-Bewertung: Baustein auslassen
     const ws = Wp.reduce((t,[,v])=>t+v,0) || 1;
     let sc = Wp.reduce((t,[k,v]) => t + v * p.comp[k], 0) / ws * 100;
-    if(p.comp.news === 0) sc *= 0.35; else if(p.comp.news < 0.5) sc *= 0.75;
     p.score = Math.round(sc);
   }
 }
@@ -692,6 +699,14 @@ async function runKiNow(){
   } finally { kiRunning = false; $('kiRun').textContent = 'Jetzt bewerten'; renderKiStatus(); }
 }
 
+function progTier(v){ return v >= 9 ? 'elite' : v >= 7 ? 'strong' : v >= 5 ? 'solid' : v >= 3 ? 'weak' : 'bad'; }
+function progHtml(p){
+  if(p.prog == null) return '–';
+  const att = p.pos === 'FWD' || p.pos === 'MID';
+  const tip = (p.progParts||[]).map(x => `GW${x.gw} ${x.home?'vs':'@'} ${teams[x.opp]?.short||'?'}: ${fmt(x.pts,1)} Pkt (${Math.round(x.w*100)}%) – ` +
+    (att ? `erwartete Tore eigenes Team ${fmt(x.tore,1)}` : `Zu-Null-Chance ${Math.round(x.cs*100)}%, erwartete Gegentore ${fmt(x.gegentore,1)}`)).join('\n');
+  return `<span class="score ${progTier(p.prog)}" title="${esc('Erwartete Punkte pro Spiel, nächste 4 Spiele gewichtet 40/30/20/10:\n'+tip)}">${fmt(p.prog,1)}</span>`;
+}
 function tierOf(sc){
   if(sc >= 80) return ['elite','Top'];
   if(sc >= 65) return ['strong','Stark'];
@@ -1081,6 +1096,7 @@ async function loadSleeper(leagueId){
 const COLDEFS = [
   {k:'name',   t:'Spieler', l:true, fixed:true, cell:p => nameCell(p)},
   {k:'score',  t:'Score',   cell:p => scoreHtml(p)},
+  {k:'prog',   t:'Prognose', cell:p => progHtml(p)},
   {k:'xfp',    t:'xFP',     cls:'big mono', cell:p => fmt(p.xfp,1)},
   {k:'owner',  t:'Besitzer', l:true, cell:p => ownerLabel(p)},
   {k:'ceil',   t:'Floor–Ceil', cls:'mono muted', cell:p => `${fmt(p.floor,0)}–${fmt(p.ceil,0)}`},
@@ -1088,7 +1104,7 @@ const COLDEFS = [
   {k:'l10',    t:'Ø L10',   cell:p => `${fmt(p.l10,1)} ${sparkHtml(p)}`},
   {k:'minL5',  t:'Min L5',  cell:p => Math.round(p.minL5)},
   {k:'slp',    t:'Sleeper-Prog.', cls:'mono', cell:p => p.slp != null ? fmt(p.slp,1) : '–'},
-  {k:'proj',   t:'xFP Σ',   cls:'mono', cell:p => fmt(p.proj,1)},
+
   {k:'minutes',t:'Min',     cell:p => p.minutes},
   {k:'goals',  t:'T',       cell:p => p.goals},
   {k:'assists',t:'A',       cell:p => p.assists},
@@ -1130,6 +1146,7 @@ function sortVal(p,k){
   if(k==='owner'){ const o=ownerOf(p); return o ? (sleeper.users[o]||'') : ''; }
   if(k==='ki'){ const r = kiOf(p); return r ? r.r : -1; }
   if(k==='slp') return p.slp ?? -99;
+  if(k==='prog') return p.prog ?? -99;
   return p[k];
 }
 function filtered(){
@@ -1177,7 +1194,7 @@ function renderTable(){
     const cls = [state.selected.has(p.id)?'hl':'', (o && o===sleeper.me)?'mine':''].join(' ');
     return `<tr class="${cls}" data-pid="${p.id}">${cols.map(c => `<td class="${c.l?'l':''} ${c.cls||''}">${c.cell(p)}</td>`).join('')}</tr>`;
   }).join('');
-  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · xFP Σ = nächste ${state.horizon} Runden`;
+  $('count').textContent = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele (40/30/20/10 %)`;
   renderCmpPill();
 }
 function renderColPanel(){
@@ -1203,8 +1220,8 @@ function renderCompare(){
   if(!sel.length){ $('cmp').className='empty'; $('cmp').innerHTML='Noch keine Spieler ausgewählt.'; return; }
   $('cmp').className='';
   const metrics = [
-    ['PL-Scout-Score','score',0],['xFP nächstes Spiel','xfp',1],['Floor','floor',1],['Ceiling','ceil',1],['xMin','xMin',0],['Ø Pkt letzte 10','l10',1],['Ø Pkt letzte 3','l3',1],['Min. letzte 5','minL5',0],
-    ['Prognose','proj',1],['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
+    ['Score (Spielerqualität)','score',0],['Prognose (4 Spiele)','prog',1],['xFP nächstes Spiel','xfp',1],['Floor','floor',1],['Ceiling','ceil',1],['xMin','xMin',0],['Ø Pkt letzte 10','l10',1],['Ø Pkt letzte 3','l3',1],['Min. letzte 5','minL5',0],
+    ['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
     ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['FPL-Form','form',1]
   ];
   let h = `<table><thead><tr><th class="l"></th>${sel.map(p=>`<th>${esc(p.name)} <button class="x" data-rm="${p.id}" title="entfernen">✕</button><br><small style="color:var(--muted)">${esc(teams[p.teamId].short)} · ${p.pos}</small></th>`).join('')}</tr></thead><tbody>`;
@@ -1213,6 +1230,9 @@ function renderCompare(){
     h += `<tr><td class="l">${label}</td>${sel.map(p=>`<td class="${sel.length>1&&p[k]===max&&max>0?'best':''}">${fmt(p[k],d)}</td>`).join('')}</tr>`;
   }
   h += `<tr><td class="l">Gegner</td>${sel.map(p=>`<td>${fdrHtml(p)}</td>`).join('')}</tr>`;
+  h += `<tr><td class="l">Prognose pro Spiel</td>${sel.map(p=>`<td class="kitext" style="text-align:left">${(p.progParts||[]).map(x => {
+    const att = p.pos === 'FWD' || p.pos === 'MID';
+    return `<div>GW${x.gw} ${x.home?'vs':'@'} ${esc(teams[x.opp]?.short||'?')}: <b>${fmt(x.pts,1)}</b> <span style="color:var(--muted)">(${Math.round(x.w*100)}% · ${att ? 'Team-Tore '+fmt(x.tore,1) : 'Zu-Null '+Math.round(x.cs*100)+'%'})</span></div>`; }).join('')}</td>`).join('')}</tr>`;
   h += `<tr><td class="l">News-Einschätzung</td>${sel.map(p=>{ const r = kiOf(p); return `<td>${r ? '<div class="kitext">'+esc(r.t)+'</div>' : '–'}</td>`; }).join('')}</tr>`;
   h += `<tr><td class="l">Standards</td>${sel.map(p=>`<td>${p.setPieces && p.setPieces.length ? esc(p.setPieces.join(', ')) : '–'}</td>`).join('')}</tr>`;
   h += `<tr><td class="l" colspan="${sel.length+1}" style="color:var(--muted);font-size:11px;padding-top:12px">SCORE-BAUSTEINE (0–100, im Vergleich zur Position)</td></tr>`;
@@ -1302,11 +1322,11 @@ function rosterCard(r){
               : (x.injury ? `<span class="news bad" title="${esc(x.injury)}">⚠</span>` : '');
     return `<tr class="${cls}${p && state.selected.has(p.id)?' hl':''}"${p ? ` data-pid="${p.id}"` : ''}>
       <td class="l">${p ? nameCell(p) : `<div class="nm"><span class="pname p-${x.pos}">${esc(x.name)}</span> ${inj}</div><div class="sub"><b>${esc(x.club)}</b></div>`}</td>
-      ${p ? `<td>${scoreHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.proj)}</td>`
+      ${p ? `<td>${scoreHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td>${progHtml(p)}</td>`
           : `<td colspan="7" class="l nodata">keine Stats zugeordnet</td>`}
     </tr>`;
   };
-  const head = `<tr><th class="l">Spieler</th><th>Score</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>xFP Σ</th></tr>`;
+  const head = `<tr><th class="l">Spieler</th><th>Score</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>Prognose</th></tr>`;
   return `<div class="card roster">
     <div class="teamhead"><h3>${esc(sleeper.users[r.owner]||'?')}${r.owner===sleeper.me?' (du)':''}</h3>
       <div class="kpis"><div><b>${t.rec}</b>Bilanz</div><div><b>${fmt(t.fpts,1)}</b>Punkte</div><div><b>${fmt(t.projStart)}</b>Prognose Startelf</div></div></div>
@@ -1326,7 +1346,7 @@ function line(p){
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
   const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
   const ki = kiOf(p);
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI ${ki.r}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI ${ki.r}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}`;
 }
@@ -1338,7 +1358,7 @@ function buildPrompt(question){
   const rules = Object.entries(scoring).filter(([k,v]) => typeof v === 'number' && v && LABELS[k]).map(([k,v]) => `${LABELS[k]} ${v>0?'+':''}${v}`).join(', ');
   out.push(`\nMEINE DATEN (Saisonstats aus der offiziellen FPL-API; nächster Spieltag GW ${nextGw}; Progn. = erwartete Punkte nach meinen Regeln in den nächsten ${state.horizon} Runden; Gegner(H/A + Schwierigkeit 1 leicht – 5 schwer); T=Tore, A=Assists, ZN=Zu-Null)`);
   out.push(`Punkteregeln: ${rules}`);
-  out.push(`SCORE = eigener PL-Scout-Score 0–100 (Bausteine je 0–100, im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). Ø L10/L3 = Punkte pro Spiel nach meinen Regeln in den letzten 10/3 Spielen; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
+  out.push(`SCORE = Spielerqualität 0–100 unabhängig vom Spielplan (Bausteine je 0–100 im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). PROGNOSE = erwartete Punkte pro Spiel der nächsten 4 Spiele, gewichtet 40/30/20/10 %. Ø L10/L3 = echte Punkte pro Spiel (Liga-Wertung) der letzten 10/3 Spiele; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
   const blocks = [];
   if(sleeper.rosters.length){
     const mine = sleeper.rosters.find(r => r.owner === sleeper.me);
@@ -1496,8 +1516,8 @@ $('scoring').addEventListener('input', e => {
   const k = e.target.dataset.sk; if(!k) return;
   scoring[k] = num(e.target.value); store.set('scoring', scoring); renderAll();
 });
-$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW2', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
-$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW2', scoreW); renderAll(); });
+$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW3', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
+$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW3', scoreW); renderAll(); });
 $('meSel').addEventListener('change', e => {
   sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); store.set('me', sleeper.me);
   const u = new URL(location.href); if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me'); history.replaceState(null,'',u);
