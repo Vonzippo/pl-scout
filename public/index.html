@@ -1714,7 +1714,7 @@ function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare();
 const POS_DE = { GKP:'Torhüter', DEF:'Verteidiger', MID:'Mittelfeld', FWD:'Sturm' };
 const POS_PL = { GKP:'Torhütern', DEF:'Verteidigern', MID:'Mittelfeldspielern', FWD:'Stürmern' };
 const SLPOS_DE = { GK:'TW', G:'TW', D:'VER', M:'MIT', F:'STU' };
-let pvId = null;
+let pvId = null, pvPushed = false;
 function compWhy(p, k){
   const i = p.inv;
   switch(k){
@@ -1864,15 +1864,15 @@ function openPlayer(id, push = true){
   const p = players.find(x => x.id === id); if(!p) return;
   pvId = id; $('pvBody').innerHTML = playerSheet(p); $('pv').hidden = false; $('pv').scrollTop = 0;
   document.body.classList.add('noscroll');
-  if(push && !(history.state && history.state.pv)) history.pushState({ pv: id }, '');
+  if(push && !pvPushed){ history.pushState({ pv: id }, ''); pvPushed = true; }
   loadSlNews(p); loadTrend(p);
 }
 function closePlayer(fromPop){
   if($('pv').hidden) return;
   $('pv').hidden = true; document.body.classList.remove('noscroll'); pvId = null;
-  if(!fromPop && history.state && history.state.pv) history.back();
+  if(pvPushed){ pvPushed = false; if(!fromPop) history.back(); }
 }
-window.addEventListener('popstate', () => closePlayer(true));
+window.addEventListener('popstate', () => { if(!$('pv').hidden){ pvPushed = false; closePlayer(true); } });
 window.plOpenPlayer = openPlayer;
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closePlayer(); });
 $('pv').addEventListener('click', e => {
