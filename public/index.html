@@ -159,6 +159,15 @@ td.muted{color:var(--muted)}
 #cmpPill{position:fixed;right:16px;bottom:16px;z-index:20;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
 .databar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-6px 0 12px}
 .databar button{font-size:12px;padding:4px 10px}
+.pltab{border-collapse:collapse;width:100%;min-width:560px}
+.pltab th,.pltab td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap;font-size:13px;position:static;background:transparent;cursor:default}
+.pltab th{color:var(--muted);font-size:11px}
+.pltab .l{text-align:left}
+.rk{display:inline-block;min-width:26px;border-radius:6px;padding:2px 4px;font-weight:700;font-size:12px}
+.rk.r1{background:#1f9d55;color:#fff}.rk.r2{background:#3f8f5a;color:#fff}.rk.r3{background:#3a4556;color:#dbe7f5}.rk.r4{background:#a8603c;color:#fff}.rk.r5{background:#b8334a;color:#fff}
+.frm{display:inline-flex;gap:2px}.frm i{width:14px;height:14px;border-radius:3px;font-size:9px;font-style:normal;font-weight:700;color:#fff;display:inline-grid;place-items:center}
+.frm .W{background:#1f9d55}.frm .D{background:#6b7280}.frm .L{background:#b8334a}
+.pltab tr.cl-top td:first-child{box-shadow:inset 3px 0 0 #5aa9ff}.pltab tr.cl-down td:first-child{box-shadow:inset 3px 0 0 #b8334a}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -181,6 +190,11 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   <div class="tabs" id="tabs"><button data-tab="players" class="on">Spieler</button><button data-tab="teams">Teams</button><button data-tab="coach">✨ KI-Coach</button></div>
 
   <section id="viewTeams" hidden>
+    <details class="card" id="plCard" open style="margin-bottom:12px">
+      <summary style="cursor:pointer;font-weight:700">⚽ Premier League – Tabelle & Teamstärken</summary>
+      <div class="empty" style="margin:6px 0">Rang 1–20 je Bereich (grün = stark, rot = schwach) · Angriff = erwartete Tore (xG) pro Spiel · Mittelfeld = Fantasy-Punkte aller Mittelfeldspieler des Klubs pro Spiel · Abwehr = erwartete Gegentore (xGA) pro Spiel · Form = letzte 5 Spiele (S/U/N)</div>
+      <div style="overflow:auto"><table class="pltab"><thead><tr><th>#</th><th class="l">Klub</th><th>Sp</th><th>Pkt</th><th>Tore</th><th class="l">Form</th><th>Angriff</th><th>Mittelf.</th><th>Abwehr</th></tr></thead><tbody id="plBody"></tbody></table></div>
+    </details>
     <div id="teamsEmpty" class="card empty">Lade oben deine Sleeper-Liga, dann siehst du hier dein Team und die Teams deiner Mitspieler.</div>
     <div id="teamsBody" hidden>
       <div class="card lgtable" style="margin-bottom:12px">
@@ -330,7 +344,7 @@ const store = {
 
 let scoring = Object.assign({}, DEFAULT_SCORING, store.get('scoring') || {});
 let players = [], teams = {}, fixturesByTeam = {}, gamesPlayed = 1, nextGw = null;
-let playedGwByTeam = {}, finishedGws = [], histById = null;
+let playedGwByTeam = {}, finishedGws = [], histById = null, allFixtures = [];
 let sleeper = { ownerByFpl: {}, fplBySleeper: {}, users: {}, me: '', rosters: [], sp: {} };
 const SPOS = {GK:'GKP',G:'GKP',D:'DEF',M:'MID',F:'FWD'};
 let view = 'players', teamA = '', teamB = '';
@@ -941,6 +955,7 @@ async function loadFPL(){
   gamesPlayed = Math.max(1, ev.filter(e => e.finished).length);
   $('gwinfo').textContent = next ? `Nächster Spieltag: GW ${next.id} · ${gamesPlayed} Spieltage gespielt` : 'Saison beendet';
 
+  allFixtures = fixtures;
   fixturesByTeam = {}; playedGwByTeam = {};
   finishedGws = ev.filter(e => e.finished).map(e => e.id);
   for(const f of fixtures){
@@ -1260,6 +1275,48 @@ function renderTips(){
   el.innerHTML = '<ul style="margin:0;padding-left:18px">' + tips.slice(0,6).map(t =>
     `<li><span class="pos ${t.pos}">${t.pos}</span> <b>${esc(t.in.name)}</b> (${esc(teams[t.in.teamId].short)}, ${fmt(t.in.proj)}) für ${esc(t.out.name)} (${fmt(t.out.proj)}) · <b>+${fmt(t.gain)}</b> Pkt</li>`).join('') + '</ul>';
 }
+/* ---------- Premier-League-Tabelle & Teamstärken ---------- */
+function renderPLTable(){
+  const body = $('plBody'); if(!body || !Object.keys(teams).length) return;
+  const T = {};
+  for(const id in teams) T[id] = { id:+id, sp:0, w:0, d:0, l:0, gf:0, ga:0, pts:0, form:[] };
+  const done = allFixtures.filter(f => (f.finished || f.finished_provisional) && f.team_h_score != null && f.team_a_score != null)
+    .sort((a,b) => String(a.kickoff_time).localeCompare(String(b.kickoff_time)));
+  for(const f of done){
+    const H = T[f.team_h], A = T[f.team_a]; if(!H || !A) continue;
+    const hs = f.team_h_score, as = f.team_a_score;
+    H.sp++; A.sp++; H.gf += hs; H.ga += as; A.gf += as; A.ga += hs;
+    if(hs > as){ H.w++; H.pts += 3; A.l++; H.form.push('W'); A.form.push('L'); }
+    else if(hs < as){ A.w++; A.pts += 3; H.l++; H.form.push('L'); A.form.push('W'); }
+    else { H.d++; A.d++; H.pts++; A.pts++; H.form.push('D'); A.form.push('D'); }
+  }
+  // Stärken: xG für/gegen pro Spiel, Fantasy-Punkte Mittelfeld pro Spiel
+  const tm = teamModel.tm || {};
+  for(const id in T){
+    const t = T[id], g = Math.max(1, (tm[id] && tm[id].games) || t.sp);
+    t.xgf = tm[id] ? tm[id].xg / g : 0; t.xga = tm[id] ? tm[id].xgc / g : 0;
+    const mids = players.filter(p => p.teamId === +id && p.pos === 'MID');
+    t.midPts = mids.reduce((s,p) => s + (p.ptsReal != null ? p.ptsReal : p.pts), 0) / Math.max(1, t.sp || g);
+  }
+  const arr = Object.values(T);
+  const rank = (key, asc) => { const sorted = [...arr].sort((a,b) => asc ? a[key]-b[key] : b[key]-a[key]); sorted.forEach((t,i) => t['r_'+key] = i+1); };
+  rank('xgf', false); rank('midPts', false); rank('xga', true);
+  arr.sort((a,b) => b.pts-a.pts || (b.gf-b.ga)-(a.gf-a.ga) || b.gf-a.gf);
+  const cls = r => r <= 4 ? 'r1' : r <= 8 ? 'r2' : r <= 12 ? 'r3' : r <= 16 ? 'r4' : 'r5';
+  const badge = (r, tip, val) => `<span class="rk ${cls(r)}" title="${esc(tip)}">${r}.</span><div style="font-size:10px;color:var(--muted)">${val}</div>`;
+  body.innerHTML = arr.map((t,i) => {
+    const d = t.gf - t.ga;
+    return `<tr class="${i<4?'cl-top':''}${i>=17?' cl-down':''}"><td>${i+1}</td>
+      <td class="l"><b>${esc(teams[t.id].short)}</b> <span style="color:var(--muted);font-size:11px">${esc(teams[t.id].name)}</span></td>
+      <td>${t.sp}</td><td><b>${t.pts}</b></td>
+      <td title="Tore : Gegentore (Differenz)">${t.gf}:${t.ga} <span style="color:${d>0?'var(--accent)':d<0?'var(--bad)':'var(--muted)'};font-size:11px">${d>0?'+':''}${d}</span></td>
+      <td class="l"><span class="frm">${t.form.slice(-5).map(r => `<i class="${r}">${r==='W'?'S':r==='D'?'U':'N'}</i>`).join('')}</span></td>
+      <td>${badge(t.r_xgf, `Angriff: ${fmt(t.xgf,2)} xG pro Spiel, ${t.gf} Tore`, fmt(t.xgf,1)+' xG')}</td>
+      <td>${badge(t.r_midPts, `Mittelfeld: ${fmt(t.midPts,1)} Fantasy-Punkte der Mittelfeldspieler pro Spiel`, fmt(t.midPts,0)+' Pkt')}</td>
+      <td>${badge(t.r_xga, `Abwehr: ${fmt(t.xga,2)} erwartete Gegentore pro Spiel, ${t.ga} Gegentore`, fmt(t.xga,1)+' xGA')}</td></tr>`;
+  }).join('');
+}
+
 /* ---------- Teams ---------- */
 const POS_ORDER = {GKP:0, DEF:1, MID:2, FWD:3};
 const fplById = id => players.find(p => p.id === id);
@@ -1291,6 +1348,7 @@ function teamStats(r){
   };
 }
 function renderTeams(){
+  renderPLTable();
   const has = sleeper.rosters.length > 0;
   $('teamsEmpty').hidden = has; $('teamsBody').hidden = !has;
   $('hzLabel').textContent = state.horizon;
