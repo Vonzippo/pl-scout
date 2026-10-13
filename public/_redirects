@@ -1,1 +1,2 @@
-/api/sleeper/*  https://api.sleeper.app/v1/:splat              200!
+/api/sleeper/*       https://api.sleeper.app/v1/:splat   200!
+/api/sleeperstats/*  https://api.sleeper.com/:splat      200!

@@ -277,6 +277,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <details style="margin-top:8px"><summary class="empty" style="cursor:pointer">Wie wird der Score berechnet?</summary>
       <ul class="empty" style="line-height:1.6;margin:6px 0">
         <li><b>xFP:</b> erwartete Punkte im nächsten Spiel nach deinen Regeln – aus erwarteter Spielzeit, Tor-/Assist-Raten (xG/xA, inkl. Elfmeter-, Freistoss- und Eckball-Rolle), Stärke beider Teams (eigenes Torerwartungs-Modell), Heim/Auswärts, Zu-Null-Chance, Paraden und Karten.</li>
+        <li><b>Sleeper-Prognose:</b> die offizielle Projektion von Sleeper für den nächsten Spieltag, mit eurer Liga-Wertung gerechnet; fliesst zu 35 % ins xFP ein.</li>
         <li><b>KI-Bewertung:</b> ein Bot liest täglich die Schlagzeilen zu jedem relevanten Spieler und vergibt 0–100 mit kurzer Begründung. Spieler ohne KI-Bewertung werden ohne diesen Baustein berechnet.</li>
         <li><b>Form:</b> Punkte pro Spiel nach deinen Regeln in den letzten 10 Spielen, neuere Spiele zählen stärker.</li>
         <li><b>Effizienz:</b> Punkte pro 90 Minuten über die Saison; bei wenig Einsatzzeit zum Positions-Schnitt hin geglättet (kein Glückstreffer-Bonus).</li>
@@ -377,6 +378,11 @@ function recompute(){
   const H = state.horizon;
   for(const p of players){
     p.pts = pointsFrom(p, scoring, false);
+    const rl = sleeper.real && sleeper.real[p.id];
+    if(rl){ // echte Saisonpunkte (exakt nach Liga-Wertung)
+      let sum = 0, mins = 0; for(const w in rl){ sum += rl[w].pts; mins += rl[w].min; }
+      p.ptsReal = sum; if(mins > 0){ p.pts = sum * Math.max(1, p.minutes) / mins; }
+    }
     p.xpts = pointsFrom(p, scoring, true);
     p.pts90 = p.minutes > 0 ? p.pts / p.minutes * 90 : 0;
     p.xpts90 = p.minutes > 0 ? p.xpts / p.minutes * 90 : 0;
@@ -484,6 +490,9 @@ function computeXfp(){
     // 15 % aktuelle Form (Punkte pro Spiel der letzten Spiele, nach Verfügbarkeit gewichtet)
     const formPart = (p.l10 || 0) * Math.min(1, (p.xMin || 0) / Math.max(30, p.minL5 || 90));
     p.xfp = 0.85 * model + 0.15 * formPart;
+    // Prognose von Sleeper (Profi-Projektion, Liga-Wertung) zu 35 % einmischen, falls vorhanden
+    p.slp = sleeper.proj ? sleeper.proj[p.id] : undefined;
+    if(p.slp != null) p.xfp = 0.65 * p.xfp + 0.35 * p.slp;
     const shift = p.xfp - model;
     p.floor = out[Math.floor(N * 0.15)] + shift; p.ceil = out[Math.floor(N * 0.85)] + shift;
     p.proj += shift * nextM.length / Math.max(1, nextM.length);
@@ -517,6 +526,20 @@ async function loadHistory(){
 function gameLog(p){
   if(!histById) return null;
   const out = [];
+  const real = sleeper.real && sleeper.real[p.id];
+  const weeks = sleeper.realWeeks && sleeper.realWeeks.length ? sleeper.realWeeks.slice(-N_FORM) : histById.__gws;
+  if(sleeper.realWeeks && sleeper.realWeeks.length){
+    // Exakte Sleeper-Punkte (Liga-Wertung) inkl. noch nicht abgeschlossenem Spieltag
+    for(const gw of weeks){
+      if(!(playedGwByTeam[p.teamId] || {})[gw]) continue;
+      const r = real && real[gw];
+      const st = (histById[p.id] || {})[gw];
+      const calc = st && num(st.minutes) ? pointsFrom(liveToP(p.pos, st), scoring, false) : (r ? null : 0);
+      out.push({ gw, min: r ? r.min : (st ? num(st.minutes) : 0), start: r ? r.gs > 0 || r.min >= 60 : (st ? num(st.starts) > 0 : false),
+        calc, real: r ? r.pts : (st && num(st.minutes) ? undefined : 0), pts: r ? r.pts : (calc || 0) });
+    }
+    return out;
+  }
   for(const gw of histById.__gws){
     if(!(playedGwByTeam[p.teamId] || {})[gw]) continue; // Klub hatte spielfrei
     const st = (histById[p.id] || {})[gw];
@@ -722,21 +745,50 @@ function corr(arr, f){
   return sxx && syy ? sxy / Math.sqrt(sxx*syy) : 0;
 }
 let calibRunning = false;
+// Exakte Liga-Punkte: Sleeper liefert pro Spieler und Spieltag alle Stats bereits mit Positions-Präfix (pos_m_kp …),
+// die Liga-Wertung hat genau dieselben Schlüssel → Punkte = Σ Stat × Wert.
+function leaguePoints(stats, ss){
+  let pts = 0;
+  for(const k in stats) if(k.startsWith('pos_') && ss[k] != null) pts += (+stats[k] || 0) * ss[k];
+  return Math.round(pts * 100) / 100;
+}
+async function loadSleeperStats(){
+  if(sleeper.real || !sleeper.scoringSettings || !sleeper.matchPid) return;
+  const ss = sleeper.scoringSettings;
+  let season = new Date().getFullYear(), week = Math.max(1, (nextGw || 2) - 1);
+  try { const st = await getJSON('/api/sleeper/state/clubsoccer:epl'); season = +st.season || season; week = +st.week || week; } catch(e){}
+  const weeks = Array.from({ length: week }, (_, i) => i + 1);
+  const res = await Promise.allSettled(weeks.map(w => getJSON(`/api/sleeperstats/stats/clubsoccer:epl/${season}/${w}?season_type=regular`)));
+  const real = {}, have = [];
+  res.forEach((r, i) => {
+    if(r.status !== 'fulfilled' || !Array.isArray(r.value) || !r.value.length) return;
+    have.push(weeks[i]);
+    for(const e of r.value){
+      if(!e || !e.stats || !num(e.stats.min)) continue;
+      const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue;
+      const cur = (real[fid] ||= {})[weeks[i]];
+      const add = { pts: leaguePoints(e.stats, ss), min: num(e.stats.min), gs: num(e.stats.gs) };
+      (real[fid])[weeks[i]] = cur ? { pts: cur.pts + add.pts, min: cur.min + add.min, gs: Math.max(cur.gs, add.gs) } : add; // Doppelspieltag
+    }
+  });
+  sleeper.real = real; sleeper.realWeeks = have;
+  // Sleeper-Prognose für den nächsten Spieltag
+  try {
+    const pr = await getJSON(`/api/sleeperstats/projections/clubsoccer:epl/${season}/${nextGw}?season_type=regular`);
+    const proj = {};
+    for(const e of pr || []){ if(!e || !e.stats) continue; const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue; proj[fid] = (proj[fid] || 0) + leaguePoints(e.stats, ss); }
+    sleeper.proj = proj;
+  } catch(e){ sleeper.proj = null; }
+}
 async function calibrate(){
   if(calibRunning || sleeper.calibrated || !sleeper.scoringSettings || !histById || !sleeper.matchPid) return;
   if(!('pos_m_g' in sleeper.scoringSettings)) { sleeper.calibrated = true; return; } // keine Fussball-Wertung → Standardregeln behalten
   calibRunning = true;
   try {
     const prev = scoring, base = leagueScoring(sleeper.scoringSettings), gws = histById.__gws;
-    const res = await Promise.allSettled(gws.map(w => getJSON(`/api/sleeper/league/${sleeper.leagueId}/matchups/${w}`)));
+    await loadSleeperStats();
     const actual = {};
-    res.forEach((r, i) => {
-      if(r.status !== 'fulfilled') return;
-      for(const m of r.value || []) for(const [pid, pts] of Object.entries(m.players_points || {})){
-        const fid = sleeper.matchPid(pid); if(fid == null) continue;
-        (actual[fid] ||= {})[gws[i]] = +pts;
-      }
-    });
+    for(const fid in (sleeper.real || {})) for(const w in sleeper.real[fid]) (actual[fid] ||= {})[w] = sleeper.real[fid][w].pts;
     const byId = Object.fromEntries(players.map(p => [p.id, p]));
     const rows = [];
     for(const [fid, wk] of Object.entries(actual)){
@@ -757,7 +809,7 @@ async function calibrate(){
     }
     const s = { ...base, lr };
     for(const r of rows) r.after = pointsFrom(r.q, s, false);
-    calib = { n: rows.length, gws, before: mae(rows, r => r.before), rulesOnly: mae(rows, r => r.known), after: mae(rows, r => r.after),
+    calib = { n: rows.length, gws: sleeper.realWeeks && sleeper.realWeeks.length ? sleeper.realWeeks : gws, before: mae(rows, r => r.before), rulesOnly: mae(rows, r => r.known), after: mae(rows, r => r.after),
       rBefore: corr(rows, r => r.before), rAfter: corr(rows, r => r.after), lr,
       byPos: Object.fromEntries(['GKP','DEF','MID','FWD'].map(pos => { const rp = rows.filter(r => r.pos === pos); return [pos, { n: rp.length, mae: mae(rp, r => r.after) }]; })),
       rows };
@@ -775,7 +827,8 @@ function renderCalib(){
   card.hidden = false;
   const P = { GKP:'TW', DEF:'VER', MID:'MIT', FWD:'STU' };
   $('calibSummary').innerHTML = `
-    <p>Grundlage: <b>${calib.n}</b> echte Einsätze aus GW ${calib.gws[0]}–${calib.gws[calib.gws.length-1]} (Sleeper-Punkte aller Kaderspieler der Liga).</p>
+    <p>Grundlage: <b>${calib.n}</b> Einsätze aus GW ${calib.gws[0]}–${calib.gws[calib.gws.length-1]}. Die <b>echten Punkte sind exakt</b>: Sleeper liefert alle Stats (Key Passes, Schüsse aufs Tor, Flanken, Luftduelle …) und die Seite rechnet sie mit eurer Liga-Wertung. Form, Score und Saisonpunkte verwenden diese echten Werte.</p>
+    <p>Für Prognosen braucht es zusätzlich das Modell aus den Premier-League-Daten – so genau trifft es die echten Punkte:</p>
     <p>Durchschnittliche Abweichung pro Spieler und Spiel: <b style="color:var(--bad)">${fmt(calib.before,1)}</b> (alte Standard-Regeln) → ${fmt(calib.rulesOnly,1)} (nur Liga-Regeln) → <b style="color:var(--accent)">${fmt(calib.after,1)} Punkte</b> (Liga-Regeln + gelernte Zusatzwerte). Übereinstimmung (Korrelation): ${fmt(calib.rBefore,2)} → <b>${fmt(calib.rAfter,2)}</b>.</p>
     <details><summary class="empty" style="cursor:pointer">Gelernte Zusatzwerte je Position (für Stats, die nur Sleeper zählt)</summary>
     <table class="mdt"><tbody><tr><th>Wert</th>${Object.keys(P).map(k=>`<th>${P[k]} (n=${calib.byPos[k].n})</th>`).join('')}</tr>
@@ -960,6 +1013,7 @@ const COLDEFS = [
   {k:'xMin',   t:'xMin',    cls:'mono', cell:p => `<span title="Startwahrscheinlichkeit ${Math.round((p.pStart||0)*100)}%">${Math.round(p.xMin||0)}</span>`},
   {k:'l10',    t:'Ø L10',   cell:p => `${fmt(p.l10,1)} ${sparkHtml(p)}`},
   {k:'minL5',  t:'Min L5',  cell:p => Math.round(p.minL5)},
+  {k:'slp',    t:'Sleeper-Prog.', cls:'mono', cell:p => p.slp != null ? fmt(p.slp,1) : '–'},
   {k:'proj',   t:'xFP Σ',   cls:'mono', cell:p => fmt(p.proj,1)},
   {k:'minutes',t:'Min',     cell:p => p.minutes},
   {k:'goals',  t:'T',       cell:p => p.goals},
@@ -1001,6 +1055,7 @@ function sortVal(p,k){
   if(k==='pos') return p.pos;
   if(k==='owner'){ const o=ownerOf(p); return o ? (sleeper.users[o]||'') : ''; }
   if(k==='ki'){ const r = kiOf(p); return r ? r.r : -1; }
+  if(k==='slp') return p.slp ?? -99;
   return p[k];
 }
 function filtered(){
@@ -1197,7 +1252,7 @@ function line(p){
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
   const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
   const ki = kiOf(p);
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | xFP ${fmt(p.xfp,1)} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI ${ki.r}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI ${ki.r}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}`;
 }
