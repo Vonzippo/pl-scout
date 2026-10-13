@@ -78,7 +78,7 @@ export default async (req: Request) => {
     return json(401, { error: "Falsches oder fehlendes Coach-Passwort." });
   }
 
-  let body: { messages?: { role: string; content: string }[]; news?: unknown };
+  let body: { messages?: { role: string; content: string }[]; news?: unknown; league?: string; me?: string };
   try { body = await req.json(); } catch { return json(400, { error: "Ungültige Anfrage." }); }
 
   const messages = (body.messages || [])
@@ -97,7 +97,13 @@ export default async (req: Request) => {
   const q = secret ? await fetch(new URL("/api/ki/quota", req.url), { method: "POST", headers: { "content-type": "application/json", "x-ki-secret": secret }, body: JSON.stringify({ kind: "coach" }) }).then((r) => r.json()).catch(() => null) : null;
   if (!q?.ok) return json(429, { error: `Tageslimit des Coaches erreicht (${q?.limit ?? "?"} Fragen pro Tag) – morgen wieder verfügbar, oder «In Claude öffnen» nutzen.` });
 
-  const news = await gatherNews(body.news);
+  // Sleeper-Gesamtbild (Tabelle, alle Kader, FAAB, Transaktionen, Verletzungen, Sleeper-News, KI-Score)
+  const lid = /^\d{5,25}$/.test(String(body.league || "")) ? String(body.league) : "";
+  const meId = /^\d{3,25}$/.test(String(body.me || "")) ? String(body.me) : "";
+  const digestP = lid ? fetch(new URL(`/api/digest?league=${lid}${meId ? "&me=" + meId : ""}`, req.url), { signal: AbortSignal.timeout(14000) })
+    .then((r) => (r.ok ? r.text() : "")).catch(() => "") : Promise.resolve("");
+  const [news, digestRaw] = await Promise.all([gatherNews(body.news), digestP]);
+  const digest = digestRaw ? `\n\nSLEEPER-DATEN DER LIGA (live von Sleeper, soeben abgerufen – massgebend für Kader, Besitzer, FAAB, Trades, Waiver, Verletzungsstatus; «ICH» = der Nutzer):\n${digestRaw.slice(0, 15000)}` : "";
   const newsBlock = news.length
     ? `\n\nAKTUELLE SCHLAGZEILEN (Google News, letzte 7 Tage, neueste zuerst – vom System soeben abgerufen):\n` +
       news.map((n) => `- [${n.player}] ${n.date}: ${n.title} (${n.source})`).join("\n") +
@@ -111,7 +117,7 @@ export default async (req: Request) => {
     signal: AbortSignal.timeout(Math.max(5000, 37000 - (Date.now() - t0))),
     body: JSON.stringify({
       model,
-      messages: [{ role: "system", content: systemPrompt(today, season) + newsBlock + (withSearch ? "" :
+      messages: [{ role: "system", content: systemPrompt(today, season) + digest + newsBlock + (withSearch ? "" :
         "\n\n(Websuche ist gerade nicht verfügbar – stütze dich auf die Schlagzeilen und Daten oben.)") }, ...messages],
       ...(withSearch ? { tools: [{ type: "browser_search" }], tool_choice: "auto" } : {}),
       reasoning_effort: effort,

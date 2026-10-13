@@ -1581,6 +1581,7 @@ function buildPrompt(question){
   const rules = Object.entries(scoring).filter(([k,v]) => typeof v === 'number' && v && LABELS[k]).map(([k,v]) => `${LABELS[k]} ${v>0?'+':''}${v}`).join(', ');
   out.push(`\nMEINE DATEN (Saisonstats aus der offiziellen FPL-API; nächster Spieltag GW ${nextGw}; Progn. = erwartete Punkte nach meinen Regeln in den nächsten ${state.horizon} Runden; Gegner(H/A + Schwierigkeit 1 leicht – 5 schwer); T=Tore, A=Assists, ZN=Zu-Null)`);
   out.push(`Punkteregeln: ${rules}`);
+  if(sleeper.leagueId) out.push(`ALLE SLEEPER-DATEN (Tabelle, alle Kader, FAAB, Trades/Waiver, Verletzungen, News): ${location.origin}/api/digest?league=${sleeper.leagueId}${sleeper.me ? '&me='+sleeper.me : ''}&full=1 – bei Bedarf abrufen.`);
   out.push(`SCORE = Spielerqualität 0–100 unabhängig vom Spielplan: Rechnung aus Zahlen, von der KI mit News/Fitness/Rolle verfeinert («KI ±x»). Bausteine je 0–100 im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). PROGNOSE = erwartete Punkte pro Spiel der nächsten 4 Spiele, gewichtet 40/30/20/10 %. Ø L10/L3 = echte Punkte pro Spiel (Liga-Wertung) der letzten 10/3 Spiele; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
   const blocks = [];
   if(sleeper.rosters.length){
@@ -1683,7 +1684,7 @@ async function askCoach(){
     const history = chat.filter(m => m !== ai && !m.error && !m.pending);
     // nur die letzte Nutzerfrage mit vollem Datenblock schicken, ältere gekürzt
     const msgs = history.map((m,i) => ({ role:m.role, content: (m.role==='user' && i < history.length-1) ? (m.shown||m.content) : m.content }));
-    const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs, news: newsNames(question) }) });
+    const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs, news: newsNames(question), league: sleeper.leagueId || '', me: sleeper.me || '' }) });
     let j = null; try { j = await res.json(); } catch(e){}
     if(res.status === 401){ $('coachKey').classList.add('need'); $('coachKey').focus(); throw new Error('Bitte unten einmal das Coach-Passwort eingeben und nochmals «Coach fragen» klicken. Die Seite merkt es sich danach.'); }
     if(!res.ok || !j) throw new Error((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status));
