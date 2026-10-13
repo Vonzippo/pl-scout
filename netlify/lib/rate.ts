@@ -74,6 +74,7 @@ Bewerte JEDEN Spieler einzeln mit einem KI-Rating von 0 bis 100 für die nächst
 - Stütze dich vor allem auf die Sleeper-News (falls vorhanden, sie sind am zuverlässigsten) und die Schlagzeilen (Verletzung, Sperre, Rotation, Trainer-Aussagen, Formkrise/Formhoch, Transfer, Rolle im Team) und ergänze mit den Zahlen.
 - Skala: 90–100 = Top-Pick, fast sicher stark; 70–89 = klar aufstellen; 50–69 = solider Stammspieler; 30–49 = Risiko (Rotation, fraglich, schwache Form); 0–29 = fällt aus oder spielt kaum.
 - Verfügbarkeit: «verletzt»/«gesperrt»/«nicht verfügbar» oder Einsatzchance 0–25% → höchstens 15. Einsatzchance 50% → höchstens 50. Einsatzchance 75% → spielt meistens: normal bewerten und nur ca. 10 Punkte abziehen. Ohne relevante News: Rating aus Einsatzzeit, Form und Rolle ableiten.
+- Achtung Namensvettern: Schlagzeilen, die nicht eindeutig diesen Fussballer dieses Klubs betreffen (andere Person, anderer Sport, Todesanzeige), ignorieren. Hat er laut Zahlen zuletzt gespielt und melden weder Sleeper noch die Premier League eine Verletzung, gilt er als verfügbar.
 - "t": ein Satz Begründung auf Deutsch (Schweizer Rechtschreibung, kein ß), max. 140 Zeichen, nenne die wichtigste News mit Datum, falls vorhanden.
 Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"..."}]}`;
 

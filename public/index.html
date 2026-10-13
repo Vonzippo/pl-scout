@@ -706,9 +706,14 @@ function fitness(p){
   }
   const ki = kiOf(p);
   if(ki){
-    v *= 0.75 + 0.25 * Math.min(1, ki.r / 70);
-    if(ki.r <= 15) v = Math.min(v, 0.2);
-    why.push(`News-Einschätzung ${ki.r}/100`);
+    // Widerspricht die KI den offiziellen Daten (fit gemeldet, spielt regelmässig), zählt sie nur schwach
+    const official = v >= 0.99 && !(sp && sp.injury_status) && (p.minL5 || 0) >= 45;
+    if(official && ki.r <= 30){ v = 0.9; why.push(`News-Einschätzung ${ki.r}/100 widerspricht offiziellen Daten – kaum gewichtet`); }
+    else {
+      v *= 0.75 + 0.25 * Math.min(1, ki.r / 70);
+      if(ki.r <= 15) v = Math.min(v, 0.2);
+      why.push(`News-Einschätzung ${ki.r}/100`);
+    }
   }
   if(sp && sp.team_changed_at && Date.now() - sp.team_changed_at < 30 * 864e5){ v *= 0.9; why.push('neu im Klub (Eingewöhnung)'); }
   if(!why.length) why.push('fit, keine negativen News');
