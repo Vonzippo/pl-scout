@@ -704,7 +704,8 @@ function scoreHtml(p){
   const [cls, label] = tierOf(p.score);
   const tip = Object.keys(SCORE_SHORT).map(k => `${SCORE_SHORT[k]}: ${p.comp[k]==null?'–':Math.round(p.comp[k]*100)}`).join(' · ') +
     ` | Ø L10: ${fmt(p.l10,1)} Pkt · Min L5: ${Math.round(p.minL5)}`;
-  return `<span class="score ${cls}" title="${esc(label+' — '+tip)}">${p.score}</span>`;
+  const ki = kiOf(p);
+  return `<span class="score ${cls}" title="${esc(label+' — '+tip + (ki ? ' | News: '+ki.t : ''))}">${p.score}</span>`;
 }
 
 /* ---------- Liga-Punkteregeln & Kalibrierung ---------- */
@@ -1081,7 +1082,6 @@ const COLDEFS = [
   {k:'name',   t:'Spieler', l:true, fixed:true, cell:p => nameCell(p)},
   {k:'score',  t:'Score',   cell:p => scoreHtml(p)},
   {k:'xfp',    t:'xFP',     cls:'big mono', cell:p => fmt(p.xfp,1)},
-  {k:'ki',     t:'KI',      cell:p => kiHtml(p)},
   {k:'owner',  t:'Besitzer', l:true, cell:p => ownerLabel(p)},
   {k:'ceil',   t:'Floor–Ceil', cls:'mono muted', cell:p => `${fmt(p.floor,0)}–${fmt(p.ceil,0)}`},
   {k:'xMin',   t:'xMin',    cls:'mono', cell:p => `<span title="Startwahrscheinlichkeit ${Math.round((p.pStart||0)*100)}%">${Math.round(p.xMin||0)}</span>`},
@@ -1213,7 +1213,7 @@ function renderCompare(){
     h += `<tr><td class="l">${label}</td>${sel.map(p=>`<td class="${sel.length>1&&p[k]===max&&max>0?'best':''}">${fmt(p[k],d)}</td>`).join('')}</tr>`;
   }
   h += `<tr><td class="l">Gegner</td>${sel.map(p=>`<td>${fdrHtml(p)}</td>`).join('')}</tr>`;
-  h += `<tr><td class="l">KI-Bewertung</td>${sel.map(p=>{ const r = kiOf(p); return `<td>${r ? kiHtml(p)+'<div class="kitext">'+esc(r.t)+'</div>' : '–'}</td>`; }).join('')}</tr>`;
+  h += `<tr><td class="l">News-Einschätzung</td>${sel.map(p=>{ const r = kiOf(p); return `<td>${r ? '<div class="kitext">'+esc(r.t)+'</div>' : '–'}</td>`; }).join('')}</tr>`;
   h += `<tr><td class="l">Standards</td>${sel.map(p=>`<td>${p.setPieces && p.setPieces.length ? esc(p.setPieces.join(', ')) : '–'}</td>`).join('')}</tr>`;
   h += `<tr><td class="l" colspan="${sel.length+1}" style="color:var(--muted);font-size:11px;padding-top:12px">SCORE-BAUSTEINE (0–100, im Vergleich zur Position)</td></tr>`;
   for(const k of Object.keys(SCORE_SHORT)){
@@ -1302,18 +1302,18 @@ function rosterCard(r){
               : (x.injury ? `<span class="news bad" title="${esc(x.injury)}">⚠</span>` : '');
     return `<tr class="${cls}${p && state.selected.has(p.id)?' hl':''}"${p ? ` data-pid="${p.id}"` : ''}>
       <td class="l">${p ? nameCell(p) : `<div class="nm"><span class="pname p-${x.pos}">${esc(x.name)}</span> ${inj}</div><div class="sub"><b>${esc(x.club)}</b></div>`}</td>
-      ${p ? `<td>${scoreHtml(p)}</td><td>${kiHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.proj)}</td>`
-          : `<td colspan="8" class="l nodata">keine Stats zugeordnet</td>`}
+      ${p ? `<td>${scoreHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td class="mono">${fmt(p.proj)}</td>`
+          : `<td colspan="7" class="l nodata">keine Stats zugeordnet</td>`}
     </tr>`;
   };
-  const head = `<tr><th class="l">Spieler</th><th>Score</th><th>KI</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>xFP Σ</th></tr>`;
+  const head = `<tr><th class="l">Spieler</th><th>Score</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>xFP Σ</th></tr>`;
   return `<div class="card roster">
     <div class="teamhead"><h3>${esc(sleeper.users[r.owner]||'?')}${r.owner===sleeper.me?' (du)':''}</h3>
       <div class="kpis"><div><b>${t.rec}</b>Bilanz</div><div><b>${fmt(t.fpts,1)}</b>Punkte</div><div><b>${fmt(t.projStart)}</b>Prognose Startelf</div></div></div>
     <table><thead>${head}</thead><tbody>
-      <tr class="sect"><td colspan="9">Startelf (${t.starters.length})</td></tr>
-      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="9" class="l nodata">Keine Startelf gesetzt</td></tr>'}
-      <tr class="sect"><td colspan="9">Bank (${t.bench.length})</td></tr>
+      <tr class="sect"><td colspan="8">Startelf (${t.starters.length})</td></tr>
+      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="8" class="l nodata">Keine Startelf gesetzt</td></tr>'}
+      <tr class="sect"><td colspan="8">Bank (${t.bench.length})</td></tr>
       ${t.bench.map(x=>row(x,'bench')).join('')}
     </tbody></table></div>`;
 }
