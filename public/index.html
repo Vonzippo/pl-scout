@@ -168,6 +168,19 @@ td.muted{color:var(--muted)}
 .frm{display:inline-flex;gap:2px}.frm i{width:14px;height:14px;border-radius:3px;font-size:9px;font-style:normal;font-weight:700;color:#fff;display:inline-grid;place-items:center}
 .frm .W{background:#1f9d55}.frm .D{background:#6b7280}.frm .L{background:#b8334a}
 .pltab tr.cl-top td:first-child{box-shadow:inset 3px 0 0 #5aa9ff}.pltab tr.cl-down td:first-child{box-shadow:inset 3px 0 0 #b8334a}
+.lgt{min-width:0!important;width:100%}
+@media (max-width: 640px){
+  .desk{display:none}
+  .card{padding:10px}
+  .pltab{min-width:0!important;font-size:12px}
+  .pltab th,.pltab td{padding:4px 3px}
+  .frm i{width:11px;height:11px;font-size:8px}
+  .rk{min-width:20px;font-size:11px;padding:1px 3px}
+  .lgtable th,.lgtable td,.roster th,.roster td{padding:5px 4px}
+  .roster td .sub{font-size:10px}
+  .roster .kpis{gap:10px}
+  #calibTable .mdt td,#calibTable .mdt th{padding:3px 4px;font-size:11px}
+}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 @media(max-width:640px){header,main{padding-left:16px;padding-right:16px}}
 </style>
@@ -192,20 +205,20 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   <section id="viewTeams" hidden>
     <details class="card" id="plCard" open style="margin-bottom:12px">
       <summary style="cursor:pointer;font-weight:700">⚽ Premier League – Tabelle & Teamstärken</summary>
-      <div class="empty" style="margin:6px 0">Rang 1–20 je Bereich (grün = stark, rot = schwach) · Angriff = erwartete Tore (xG) pro Spiel · Mittelfeld = Fantasy-Punkte aller Mittelfeldspieler des Klubs pro Spiel · Abwehr = erwartete Gegentore (xGA) pro Spiel · Form = letzte 5 Spiele (S/U/N)</div>
-      <div style="overflow:auto"><table class="pltab"><thead><tr><th>#</th><th class="l">Klub</th><th>Sp</th><th>Pkt</th><th>Tore</th><th class="l">Form</th><th>Angriff</th><th>Mittelf.</th><th>Abwehr</th></tr></thead><tbody id="plBody"></tbody></table></div>
+      <div class="empty" style="margin:6px 0">Rang 1–20 (grün = stark, rot = schwach) · Angriff = xG/Spiel · Mitte = Fantasy-Punkte der Mittelfeldspieler · Abwehr = xG gegen/Spiel · Form = letzte 5 (S/U/N)</div>
+      <div style="overflow:auto"><table class="pltab"><thead><tr><th>#</th><th class="l">Klub</th><th>Pkt</th><th>Tore</th><th class="l">Form</th><th>Angr.</th><th>Mitte</th><th>Abw.</th></tr></thead><tbody id="plBody"></tbody></table></div>
     </details>
     <div id="teamsEmpty" class="card empty">Lade oben deine Sleeper-Liga, dann siehst du hier dein Team und die Teams deiner Mitspieler.</div>
     <div id="teamsBody" hidden>
       <div class="card lgtable" style="margin-bottom:12px">
-        <h2>Liga-Übersicht <span>Klick auf ein Team zeigt den Kader · Prognose = erwartete Punkte pro Spiel, nächste 4 Spiele (40/30/20/10 %)<span id="hzLabel" hidden></span></span></h2>
-        <table><thead><tr><th class="l">#</th><th class="l">Team</th><th>Bilanz</th><th>Punkte</th><th>Prognose Startelf</th><th>Prognose Kader</th><th>Ø Pkt/90 Startelf</th><th>Ø Score Startelf</th></tr></thead><tbody id="lgBody"></tbody></table>
+        <h2>Liga-Übersicht <span>Team antippen = Kader anzeigen<span id="hzLabel" hidden></span></span></h2>
+        <table class="lgt"><thead><tr><th class="l">Team</th><th>Bilanz</th><th>Pkt</th><th title="Prognose Startelf: erwartete Punkte pro Spiel">Progn.</th><th title="Ø Score der Startelf">Score</th></tr></thead><tbody id="lgBody"></tbody></table>
       </div>
-      <div class="card" id="calibCard" style="margin-bottom:12px" hidden>
-        <h2>Punkte-Kontrolle <span>echte Sleeper-Punkte vs. Berechnung der Seite</span></h2>
+      <details class="card" id="calibCard" style="margin-bottom:12px" hidden>
+        <summary style="cursor:pointer;font-weight:700">📊 Punkte-Kontrolle <span class="empty" style="font-weight:400">echte Punkte pro Spieltag</span></summary>
         <div id="calibSummary" class="empty"></div>
         <div id="calibTable" style="overflow:auto"></div>
-      </div>
+      </details>
       <div class="teamsbar">
         <label>Team <select id="teamA"></select></label>
         <label>vergleichen mit <select id="teamB"><option value="">– niemand –</option></select></label>
@@ -889,12 +902,12 @@ function renderCalib(){
       if(a != null) sa += a; if(c != null) sc += c;
       if(a == null && c == null) return '<td style="color:var(--muted)">–</td>';
       const d = (a ?? 0) - (c ?? 0);
-      return `<td title="echt ${fmt(a,1)} / berechnet ${fmt(c,1)}">${a != null ? fmt(a,1) : '–'} <span style="color:${Math.abs(d) > 4 ? 'var(--warn)' : 'var(--muted)'};font-size:11px">(${c != null ? fmt(c,1) : '–'})</span></td>`;
+      return `<td title="echt ${fmt(a,1)} / berechnet ${fmt(c,1)}">${a != null ? fmt(a,1) : '–'} <span class="desk" style="color:${Math.abs(d) > 4 ? 'var(--warn)' : 'var(--muted)'};font-size:11px">(${c != null ? fmt(c,1) : '–'})</span></td>`;
     }).join('');
     return { name: p ? p.name : (sleeper.sp[pid]?.name || pid), pos: p ? p.pos : (sleeper.sp[pid]?.pos || ''), sa, sc, html: cells };
   }).sort((a,b) => b.sa - a.sa);
-  $('calibTable').innerHTML = `<table class="mdt" style="width:100%"><tbody><tr><th>Spieler (${esc(sleeper.users[teamA]||'')})</th>${gws.map(g=>`<th>GW${g}</th>`).join('')}<th>Σ echt</th><th>Σ berechnet</th></tr>` +
-    lines.map(l => `<tr><td><span class="pos ${l.pos}">${l.pos}</span> ${esc(l.name)}</td>${l.html}<td><b>${fmt(l.sa,1)}</b></td><td>${fmt(l.sc,1)}</td></tr>`).join('') +
+  $('calibTable').innerHTML = `<table class="mdt" style="width:100%"><tbody><tr><th>Spieler (${esc(sleeper.users[teamA]||'')})</th>${gws.map(g=>`<th>${g}</th>`).join('')}<th>Σ</th><th class="desk">Σ berechnet</th></tr>` +
+    lines.map(l => `<tr><td><span class="pname p-${l.pos}">${esc(l.name)}</span></td>${l.html}<td><b>${fmt(l.sa,0)}</b></td><td class="desk">${fmt(l.sc,1)}</td></tr>`).join('') +
     `</tbody></table><div class="empty" style="margin-top:6px">Format: echte Sleeper-Punkte (Berechnung der Seite). Orange = Abweichung über 4 Punkte.</div>`;
 }
 
@@ -1303,13 +1316,13 @@ function renderPLTable(){
   rank('xgf', false); rank('midPts', false); rank('xga', true);
   arr.sort((a,b) => b.pts-a.pts || (b.gf-b.ga)-(a.gf-a.ga) || b.gf-a.gf);
   const cls = r => r <= 4 ? 'r1' : r <= 8 ? 'r2' : r <= 12 ? 'r3' : r <= 16 ? 'r4' : 'r5';
-  const badge = (r, tip, val) => `<span class="rk ${cls(r)}" title="${esc(tip)}">${r}.</span><div style="font-size:10px;color:var(--muted)">${val}</div>`;
+  const badge = (r, tip, val) => `<span class="rk ${cls(r)}" title="${esc(tip)}">${r}</span><div class="desk" style="font-size:10px;color:var(--muted)">${val}</div>`;
   body.innerHTML = arr.map((t,i) => {
     const d = t.gf - t.ga;
     return `<tr class="${i<4?'cl-top':''}${i>=17?' cl-down':''}"><td>${i+1}</td>
-      <td class="l"><b>${esc(teams[t.id].short)}</b> <span style="color:var(--muted);font-size:11px">${esc(teams[t.id].name)}</span></td>
-      <td>${t.sp}</td><td><b>${t.pts}</b></td>
-      <td title="Tore : Gegentore (Differenz)">${t.gf}:${t.ga} <span style="color:${d>0?'var(--accent)':d<0?'var(--bad)':'var(--muted)'};font-size:11px">${d>0?'+':''}${d}</span></td>
+      <td class="l"><b>${esc(teams[t.id].short)}</b><span class="desk" style="color:var(--muted);font-size:11px"> ${esc(teams[t.id].name)}</span></td>
+      <td><b>${t.pts}</b></td>
+      <td title="Tore : Gegentore (Differenz ${d>0?'+':''}${d})">${t.gf}:${t.ga}<span class="desk" style="color:${d>0?'var(--accent)':d<0?'var(--bad)':'var(--muted)'};font-size:11px"> ${d>0?'+':''}${d}</span></td>
       <td class="l"><span class="frm">${t.form.slice(-5).map(r => `<i class="${r}">${r==='W'?'S':r==='D'?'U':'N'}</i>`).join('')}</span></td>
       <td>${badge(t.r_xgf, `Angriff: ${fmt(t.xgf,2)} xG pro Spiel, ${t.gf} Tore`, fmt(t.xgf,1)+' xG')}</td>
       <td>${badge(t.r_midPts, `Mittelfeld: ${fmt(t.midPts,1)} Fantasy-Punkte der Mittelfeldspieler pro Spiel`, fmt(t.midPts,0)+' Pkt')}</td>
@@ -1357,10 +1370,10 @@ function renderTeams(){
     .sort((a,b) => (b.r.st.wins||0)-(a.r.st.wins||0) || b.t.fpts-a.t.fpts || b.t.projStart-a.t.projStart);
   const maxProj = Math.max(...list.map(x=>x.t.projStart));
   $('lgBody').innerHTML = list.map((x,i) => `<tr class="click ${x.r.owner===sleeper.me?'me':''}${state.hlOwner===x.r.owner?' hl':''}" data-owner="${esc(x.r.owner)}">
-    <td class="l">${i+1}</td><td class="l">${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''}</td>
-    <td>${x.t.rec}</td><td>${fmt(x.t.fpts,1)}</td>
-    <td class="mono ${x.t.projStart===maxProj?'big':''}">${fmt(x.t.projStart)}</td>
-    <td class="mono">${fmt(x.t.projAll)}</td><td class="mono">${fmt(x.t.avg90,2)}</td><td class="mono">${fmt(x.t.avgScore,0)}</td></tr>`).join('');
+    <td class="l">${i+1}. ${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''}</td>
+    <td>${x.t.rec}</td><td>${fmt(x.t.fpts,0)}</td>
+    <td class="mono ${x.t.projStart===maxProj?'big':''}">${fmt(x.t.projStart,0)}</td>
+    <td class="mono">${fmt(x.t.avgScore,0)}</td></tr>`).join('');
 
   if(!teamA || !sleeper.rosters.find(r=>r.owner===teamA)) teamA = sleeper.me || list[0].r.owner;
   const opts = list.map(x => `<option value="${esc(x.r.owner)}">${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''}</option>`).join('');
@@ -1380,18 +1393,18 @@ function rosterCard(r){
               : (x.injury ? `<span class="news bad" title="${esc(x.injury)}">⚠</span>` : '');
     return `<tr class="${cls}${p && state.selected.has(p.id)?' hl':''}"${p ? ` data-pid="${p.id}"` : ''}>
       <td class="l">${p ? nameCell(p) : `<div class="nm"><span class="pname p-${x.pos}">${esc(x.name)}</span> ${inj}</div><div class="sub"><b>${esc(x.club)}</b></div>`}</td>
-      ${p ? `<td>${scoreHtml(p)}</td><td class="big mono">${fmt(p.xfp,1)}</td><td class="mono" style="color:var(--muted)">${fmt(p.floor,0)}–${fmt(p.ceil,0)}</td><td>${p.goals}</td><td>${p.assists}</td><td class="mono">${fmt(p.pts90,2)}</td><td>${progHtml(p)}</td>`
-          : `<td colspan="7" class="l nodata">keine Stats zugeordnet</td>`}
+      ${p ? `<td>${scoreHtml(p)}</td><td>${progHtml(p)}</td><td class="mono">${fmt(p.xfp,1)}</td><td class="mono">${fmt(p.pts90,1)}</td>`
+          : `<td colspan="4" class="l nodata">keine Stats zugeordnet</td>`}
     </tr>`;
   };
-  const head = `<tr><th class="l">Spieler</th><th>Score</th><th>xFP</th><th>Floor–Ceil</th><th>T</th><th>A</th><th>Pkt/90</th><th>Prognose</th></tr>`;
+  const head = `<tr><th class="l">Spieler</th><th>Score</th><th>Progn.</th><th>xFP</th><th>Pkt/90</th></tr>`;
   return `<div class="card roster">
     <div class="teamhead"><h3>${esc(sleeper.users[r.owner]||'?')}${r.owner===sleeper.me?' (du)':''}</h3>
-      <div class="kpis"><div><b>${t.rec}</b>Bilanz</div><div><b>${fmt(t.fpts,1)}</b>Punkte</div><div><b>${fmt(t.projStart)}</b>Prognose Startelf</div></div></div>
+      <div class="kpis"><div><b>${t.rec}</b>Bilanz</div><div><b>${fmt(t.fpts,0)}</b>Punkte</div><div><b>${fmt(t.projStart,0)}</b>Progn./Spiel</div></div></div>
     <table><thead>${head}</thead><tbody>
-      <tr class="sect"><td colspan="8">Startelf (${t.starters.length})</td></tr>
-      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="8" class="l nodata">Keine Startelf gesetzt</td></tr>'}
-      <tr class="sect"><td colspan="8">Bank (${t.bench.length})</td></tr>
+      <tr class="sect"><td colspan="5">Startelf (${t.starters.length})</td></tr>
+      ${t.starters.map(x=>row(x,'')).join('') || '<tr><td colspan="5" class="l nodata">Keine Startelf gesetzt</td></tr>'}
+      <tr class="sect"><td colspan="5">Bank (${t.bench.length})</td></tr>
       ${t.bench.map(x=>row(x,'bench')).join('')}
     </tbody></table></div>`;
 }
@@ -1596,6 +1609,11 @@ async function doLoadLeague(){
 $('loadLeague').addEventListener('click', doLoadLeague);
 $('kiRun').addEventListener('click', runKiNow);
 $('refreshBtn').addEventListener('click', () => refreshAll());
+for(const id of ['plCard','calibCard','scoringCard']){
+  const el = $(id); if(!el) continue;
+  const saved = store.get('open_'+id); if(saved != null) el.open = saved;
+  el.addEventListener('toggle', () => store.set('open_'+id, el.open));
+}
 $('dataBtn').addEventListener('click', () => { const pnl = $('dataPanel'); pnl.hidden = !pnl.hidden; renderDataStatus(); });
 $('colBtn').addEventListener('click', () => { const pnl = $('colPanel'); pnl.hidden = !pnl.hidden; if(!pnl.hidden) renderColPanel(); });
 $('colList').addEventListener('change', e => {
