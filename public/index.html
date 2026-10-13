@@ -785,7 +785,7 @@ const KI_MAX_AGE = 48 * 3600e3;
 function kiOf(p){ const r = kiData.ratings[p.id]; return r && Date.now() - r.ts < KI_MAX_AGE ? r : null; }
 // KI-Feinschliff: die KI baut auf dem berechneten Score auf; ihre Abweichung wird auf den aktuellen Score gelegt
 function kiDelta(p){
-  const r = kiOf(p); if(!r || r.v !== 2) return null;
+  const r = kiOf(p); if(!r || !(r.v >= 2)) return null;
   let d = r.b != null ? r.r - r.b : r.r - p.scoreBase;
   d = Math.min(15, d);
   // Widerspricht die KI den offiziellen Daten (fit gemeldet, spielt regelmässig), höchstens −10

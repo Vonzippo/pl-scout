@@ -79,6 +79,7 @@ Deine Aufgabe: Gib einen VERFEINERTEN SCORE zurück – eine genauere Schätzung
 - Die Sleeper-News (Rotowire) sind am zuverlässigsten, die Schlagzeilen ergänzen.
 - Achtung Namensvettern: Schlagzeilen, die nicht eindeutig diesen Fussballer dieses Klubs betreffen (andere Person, anderer Sport, Todesanzeige), ignorieren. Hat er laut Zahlen zuletzt gespielt und melden weder Sleeper noch die Premier League eine Verletzung, gilt er als verfügbar.
 - Ist der berechnete Score unbekannt, schätze ihn selbst aus den Zahlen.
+- SPRACHE: "t" immer auf DEUTSCH, auch wenn die News englisch sind. Keine Zahl wie «+5» im Text, die Abweichung steht schon im Score.
 - "t": ein Satz auf Deutsch (Schweizer Rechtschreibung, kein ß), max. 140 Zeichen: warum du vom berechneten Score abweichst (oder dass nichts dagegen spricht), mit Datum der wichtigsten News.
 Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"..."}]}`;
 
@@ -90,7 +91,7 @@ Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"
       signal: AbortSignal.timeout(22000),
       body: JSON.stringify({
         model: m,
-        messages: [{ role: "system", content: system }, { role: "user", content: blocks }],
+        messages: [{ role: "system", content: system }, { role: "user", content: blocks + "\n\nAntworte nur mit dem JSON. Jede Begründung \"t\" auf Deutsch (Schweizer Rechtschreibung)." }],
         ...(m.startsWith("openai/") ? { reasoning_effort: "low" } : {}),
         temperature: 0.3,
         max_completion_tokens: 3500,
@@ -113,7 +114,7 @@ Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"
     if (k < 0 || !isFinite(Number(x.r))) continue;
     out[id] = {
       r: Math.max(0, Math.min(100, Math.round(Number(x.r)))),
-      t: String(x.t || "").slice(0, 220), ts, v: 2,
+      t: String(x.t || "").slice(0, 220), ts, v: 3,
       ...(Number.isFinite(infos[k].score) ? { b: infos[k].score } : {}),
       n: [...sl[k].slice(0, 1).map(({ title, date }) => ({ title, source: "Sleeper", date })), ...news[k].slice(0, 3).map(({ title, source, date }) => ({ title, source, date }))].slice(0, 3),
     };
