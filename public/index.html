@@ -1171,8 +1171,8 @@ const COL_DEFAULT_ORDER = COLDEFS.map(c => c.k);
 // Drei Bildschirmgrössen mit eigener Spaltenwahl: Handy, Tablet/kleiner Laptop, grosser Bildschirm
 const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
 const screenSize = () => isMobile() ? 'S' : (window.matchMedia('(max-width: 1199px)').matches ? 'M' : 'L');
-const SIZE_COLS = { S: ['name','score','prog','xfp','l10'], M: ['name','score','prog','xfp','ceil','xMin','l10','minL5','slp','pts90'] };
-const colKey = () => ({ S:'colsM2', M:'colsT2', L:'cols2' })[screenSize()];
+const SIZE_COLS = { S: ['name','score','prog','xMin'], M: ['name','score','prog','xfp','ceil','xMin','l10','minL5','slp','pts90'] };
+const colKey = () => ({ S:'colsM3', M:'colsT2', L:'cols2' })[screenSize()];
 const loadColCfg = () => {
   const vis = SIZE_COLS[screenSize()];
   const c = store.get(colKey()) || (vis ? { order: [...vis, ...COLDEFS.map(x=>x.k).filter(k=>!vis.includes(k))], hidden: COLDEFS.map(x=>x.k).filter(k=>!vis.includes(k)) } : { hidden: ['owner'] });
