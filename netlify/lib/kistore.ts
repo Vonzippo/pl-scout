@@ -33,7 +33,8 @@ export async function dueList(n = 15) {
   const [watch, { ratings }] = await Promise.all([loadWatch(), loadRatings()]);
   const now = Date.now();
   // tiefe Bewertungen (Ausfall) alle 6 h neu prüfen – Status ändert sich schnell, Fehlalarme verschwinden
-  const due = watch.filter((p) => !ratings[p.id] || now - ratings[p.id].ts > (ratings[p.id].r <= 20 ? 6 : MAX_AGE_H) * 3600e3)
+  // Alte Bewertungen (vor v2, nicht auf den Score aufgebaut) sofort neu machen
+  const due = watch.filter((p) => !ratings[p.id] || (ratings[p.id] as any).v !== 2 || now - ratings[p.id].ts > (ratings[p.id].r <= 20 ? 6 : MAX_AGE_H) * 3600e3)
     .sort((a, b) => (ratings[a.id]?.ts || 0) - (ratings[b.id]?.ts || 0));
   return { due: due.slice(0, n), pending: due.length, total: watch.length };
 }

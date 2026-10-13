@@ -212,6 +212,7 @@ tbody tr[data-pid]{touch-action:manipulation;-webkit-user-select:none;user-selec
 body.noscroll{overflow:hidden}
 .pv{position:fixed;inset:0;background:rgba(3,6,10,.72);z-index:60;display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;padding:28px 14px;-webkit-overflow-scrolling:touch}
 .pv[hidden]{display:none}
+.score.kiadj{position:relative}.score.kiadj::after{content:'';position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;background:var(--accent2);box-shadow:0 0 0 2px var(--panel)}
 .pvbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:780px;width:100%;padding:16px 18px 20px;position:relative}
 .pvx{position:absolute;top:10px;right:10px;width:36px;height:36px;padding:0;border-radius:50%;font-size:16px}
 .pvname{font-size:22px;font-weight:800;margin-right:44px;line-height:1.2}
@@ -610,8 +611,8 @@ function computeXfp(){
 /* ---------- PL-Scout-Score ---------- */
 // Score = wie gut ein Spieler ist (unabhängig vom Spielplan); kurzfristiges steckt in der Prognose
 const SCORE_DEFAULT = { form:25, eff:20, xs:15, min:15, inv:10, fit:10, trend:5 };
-const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Rolle / Einsatzzeit (Stammspieler?)', xs:'Expected (xG/xA-basiert)', inv:'Einbindung (wie oft angespielt, Ballaktionen)', fit:'Fitness & News (Verletzung, Sperre, News, Wechsel)', trend:'Trend (letzte 3 vs. 10)' };
-const SCORE_SHORT = { form:'Form', eff:'Effizienz', xs:'Expected', min:'Rolle', inv:'Einbindung', fit:'Fitness & News', trend:'Trend' };
+const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Rolle / Einsatzzeit (Stammspieler?)', xs:'Expected (xG/xA-basiert)', inv:'Einbindung (wie oft angespielt, Ballaktionen)', fit:'Fitness (Verletzung, Sperre, Rückkehr, Wechsel)', trend:'Trend (letzte 3 vs. 10)' };
+const SCORE_SHORT = { form:'Form', eff:'Effizienz', xs:'Expected', min:'Rolle', inv:'Einbindung', fit:'Fitness', trend:'Trend' };
 let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW4') || {});
 const N_FORM = 10;
 
@@ -704,19 +705,8 @@ function fitness(p){
     why.push(`Sleeper: ${slStatusDe(sp.injury_status)}${ret ? ', Rückkehr ca. '+fmtDay(ret) : ''}`);
     if(ret){ const days = (Date.parse(ret) - Date.now()) / 864e5; if(days <= 4) v = Math.max(v, 0.35); }
   }
-  const ki = kiOf(p);
-  if(ki){
-    // Widerspricht die KI den offiziellen Daten (fit gemeldet, spielt regelmässig), zählt sie nur schwach
-    const official = v >= 0.99 && !(sp && sp.injury_status) && (p.minL5 || 0) >= 45;
-    if(official && ki.r <= 30){ v = 0.9; why.push(`News-Einschätzung ${ki.r}/100 widerspricht offiziellen Daten – kaum gewichtet`); }
-    else {
-      v *= 0.75 + 0.25 * Math.min(1, ki.r / 70);
-      if(ki.r <= 15) v = Math.min(v, 0.2);
-      why.push(`News-Einschätzung ${ki.r}/100`);
-    }
-  }
   if(sp && sp.team_changed_at && Date.now() - sp.team_changed_at < 30 * 864e5){ v *= 0.9; why.push('neu im Klub (Eingewöhnung)'); }
-  if(!why.length) why.push('fit, keine negativen News');
+  if(!why.length) why.push('fit, nichts gemeldet');
   return { v: clamp01(v), why };
 }
 const fmtDay = d => { const t = typeof d === 'number' ? d : Date.parse(d); return isFinite(t) ? new Date(t).toLocaleDateString('de-CH', { day:'numeric', month:'short' }) : '–'; };
@@ -772,7 +762,7 @@ function computeScores(){
         form: pctRank(S.form, p.raw.form), eff: pctRank(S.eff, p.raw.eff), xs: pctRank(S.xs, p.raw.xs),
         trend: pctRank(S.trend, p.raw.trend), min: p.raw.min, news: p.raw.news, fix: p.raw.fix,
         inv: p.raw.inv == null || S.inv.length < 10 ? null : pctRank(S.inv, p.raw.inv), fit: p.raw.fit,
-        xfp: pctRank(S.xfp, p.raw.xfp), ki: kiOf(p) ? kiOf(p).r / 100 : null
+        xfp: pctRank(S.xfp, p.raw.xfp)
       };
       // wer kaum spielt, bekommt bei Form/Trend keinen Bonus
       if(p.minL5 < 20){ p.comp.form *= 0.5; p.comp.trend = Math.min(p.comp.trend, 0.5); }
@@ -784,13 +774,26 @@ function computeScores(){
     const Wp = W.filter(([k]) => p.comp[k] != null); // ohne KI-Bewertung: Baustein auslassen
     const ws = Wp.reduce((t,[,v])=>t+v,0) || 1;
     let sc = Wp.reduce((t,[k,v]) => t + v * p.comp[k], 0) / ws * 100;
-    p.score = Math.round(sc);
+    p.scoreBase = Math.round(sc);
+    p.kiDelta = kiDelta(p);
+    p.score = Math.max(0, Math.min(100, p.scoreBase + (p.kiDelta || 0)));
   }
 }
 /* ---------- KI-Bot ---------- */
 let kiData = { ratings:{}, meta:{} };
 const KI_MAX_AGE = 48 * 3600e3;
 function kiOf(p){ const r = kiData.ratings[p.id]; return r && Date.now() - r.ts < KI_MAX_AGE ? r : null; }
+// KI-Feinschliff: die KI baut auf dem berechneten Score auf; ihre Abweichung wird auf den aktuellen Score gelegt
+function kiDelta(p){
+  const r = kiOf(p); if(!r || r.v !== 2) return null;
+  let d = r.b != null ? r.r - r.b : r.r - p.scoreBase;
+  d = Math.min(15, d);
+  // Widerspricht die KI den offiziellen Daten (fit gemeldet, spielt regelmässig), höchstens −10
+  const sp = (sleeper.spByFpl || {})[p.id];
+  if(p.status === 'a' && !(sp && sp.injury_status) && (p.minL5 || 0) >= 45) d = Math.max(-10, d);
+  return Math.round(d);
+}
+const sgn = d => (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d);
 function kiHtml(p){
   const r = kiOf(p); if(!r) return '<span style="color:var(--muted)">–</span>';
   const [cls] = tierOf(r.r);
@@ -812,7 +815,8 @@ let watchSent = false;
 function infoLine(p){
   const nx = (p.next||[]).slice(0,2).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'})`).join(' ');
   const st = { a:'fit', d:`fraglich${p.chance!=null?' '+p.chance+'%':''}`, i:'verletzt', s:'gesperrt', u:'nicht verfügbar', n:'nicht verfügbar' }[p.status] || p.status;
-  return `${p.minutes} Min/${p.starts} Starts Saison, Min L5 ${Math.round(p.minL5)}, ${p.goals}T ${p.assists}A, xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}, Ø Pkt L10 ${fmt(p.l10,1)}` +
+  const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
+  return `Score-Bausteine: ${comp} | ${p.minutes} Min/${p.starts} Starts Saison, Min L5 ${Math.round(p.minL5)}, ${p.goals}T ${p.assists}A, xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}, Ø Pkt L10 ${fmt(p.l10,1)}` +
     `${p.setPieces && p.setPieces.length ? ', Standards: '+p.setPieces.join('/') : ''} | Status: ${st}${p.news ? ' – '+p.news : ''} | Nächste: ${nx}`;
 }
 async function sendWatchlist(){
@@ -821,7 +825,7 @@ async function sendWatchlist(){
   if(sleeper.rosters.length) for(const id in sleeper.ownerByFpl) ids.add(+id);
   const freePool = players.filter(p => !ownerOf(p) && p.minutes >= 90).sort((a,b)=>b.score-a.score);
   freePool.slice(0, sleeper.rosters.length ? 100 : 200).forEach(p => ids.add(p.id));
-  const list = players.filter(p => ids.has(p.id)).map(p => ({ id:p.id, name:p.full, club:teams[p.teamId].short, pos:p.pos, line:infoLine(p), sid:(sleeper.sidByFpl||{})[p.id] || '' }));
+  const list = players.filter(p => ids.has(p.id)).map(p => ({ id:p.id, name:p.full, club:teams[p.teamId].short, pos:p.pos, line:infoLine(p), sid:(sleeper.sidByFpl||{})[p.id] || '', score:p.scoreBase }));
   if(!list.length) return;
   watchSent = true;
   try { await fetch('/api/ki/watchlist', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ players:list }) }); } catch(e){ watchSent = false; }
@@ -864,8 +868,9 @@ function scoreHtml(p){
   const [cls, label] = tierOf(p.score);
   const tip = Object.keys(SCORE_SHORT).map(k => `${SCORE_SHORT[k]}: ${p.comp[k]==null?'–':Math.round(p.comp[k]*100)}`).join(' · ') +
     ` | Ø L10: ${fmt(p.l10,1)} Pkt · Min L5: ${Math.round(p.minL5)}`;
-  const ki = kiOf(p);
-  return `<span class="score ${cls}" title="${esc(label+' — '+tip + (ki ? ' | News: '+ki.t : ''))}">${p.score}</span>`;
+  const ki = kiOf(p), d = p.kiDelta;
+  const kt = d != null ? ` | Rechnung ${p.scoreBase}, KI ${sgn(d)}: ${ki.t}` : (ki ? ' | News: '+ki.t : '');
+  return `<span class="score ${cls}${d ? ' kiadj' : ''}" title="${esc(label+' — '+tip + kt)}">${p.score}</span>`;
 }
 
 /* ---------- Liga-Punkteregeln & Kalibrierung ---------- */
@@ -1408,7 +1413,7 @@ function renderCompare(){
   h += `<tr><td class="l">Prognose pro Spiel</td>${sel.map(p=>`<td class="kitext" style="text-align:left">${(p.progParts||[]).map(x => {
     const att = p.pos === 'FWD' || p.pos === 'MID';
     return `<div>GW${x.gw} ${x.home?'vs':'@'} ${esc(teams[x.opp]?.short||'?')}: <b>${fmt(x.pts,1)}</b> <span style="color:var(--muted)">(${Math.round(x.w*100)}% · ${att ? 'Team-Tore '+fmt(x.tore,1) : 'Zu-Null '+Math.round(x.cs*100)+'%'})</span></div>`; }).join('')}</td>`).join('')}</tr>`;
-  h += `<tr><td class="l">News-Einschätzung</td>${sel.map(p=>{ const r = kiOf(p); return `<td>${r ? '<div class="kitext">'+esc(r.t)+'</div>' : '–'}</td>`; }).join('')}</tr>`;
+  h += `<tr><td class="l">KI-Feinschliff</td>${sel.map(p=>{ const r = kiOf(p); return `<td>${r ? `<div class="kitext">${p.kiDelta != null ? `<b>${sgn(p.kiDelta)}</b> (Rechnung ${p.scoreBase}) · ` : ''}${esc(r.t)}</div>` : '–'}</td>`; }).join('')}</tr>`;
   h += `<tr><td class="l">Standards</td>${sel.map(p=>`<td>${p.setPieces && p.setPieces.length ? esc(p.setPieces.join(', ')) : '–'}</td>`).join('')}</tr>`;
   h += `<tr><td class="l" colspan="${sel.length+1}" style="color:var(--muted);font-size:11px;padding-top:12px">SCORE-BAUSTEINE (0–100, im Vergleich zur Position)</td></tr>`;
   for(const k of Object.keys(SCORE_SHORT)){
@@ -1564,7 +1569,7 @@ function line(p){
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
   const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
   const ki = kiOf(p);
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI ${ki.r}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}] | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}`;
 }
@@ -1576,7 +1581,7 @@ function buildPrompt(question){
   const rules = Object.entries(scoring).filter(([k,v]) => typeof v === 'number' && v && LABELS[k]).map(([k,v]) => `${LABELS[k]} ${v>0?'+':''}${v}`).join(', ');
   out.push(`\nMEINE DATEN (Saisonstats aus der offiziellen FPL-API; nächster Spieltag GW ${nextGw}; Progn. = erwartete Punkte nach meinen Regeln in den nächsten ${state.horizon} Runden; Gegner(H/A + Schwierigkeit 1 leicht – 5 schwer); T=Tore, A=Assists, ZN=Zu-Null)`);
   out.push(`Punkteregeln: ${rules}`);
-  out.push(`SCORE = Spielerqualität 0–100 unabhängig vom Spielplan (Bausteine je 0–100 im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). PROGNOSE = erwartete Punkte pro Spiel der nächsten 4 Spiele, gewichtet 40/30/20/10 %. Ø L10/L3 = echte Punkte pro Spiel (Liga-Wertung) der letzten 10/3 Spiele; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
+  out.push(`SCORE = Spielerqualität 0–100 unabhängig vom Spielplan: Rechnung aus Zahlen, von der KI mit News/Fitness/Rolle verfeinert («KI ±x»). Bausteine je 0–100 im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). PROGNOSE = erwartete Punkte pro Spiel der nächsten 4 Spiele, gewichtet 40/30/20/10 %. Ø L10/L3 = echte Punkte pro Spiel (Liga-Wertung) der letzten 10/3 Spiele; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
   const blocks = [];
   if(sleeper.rosters.length){
     const mine = sleeper.rosters.find(r => r.owner === sleeper.me);
@@ -1758,7 +1763,11 @@ function playerSheet(p){
     const col = v == null ? 'var(--line)' : v >= 70 ? 'var(--accent)' : v >= 40 ? 'var(--accent2)' : 'var(--bad)';
     h += `<div>${SCORE_SHORT[k]} <span class="w">${scoreW[k]}%</span></div><div class="v">${v ?? '–'}</div><div><span class="bar"><i style="width:${v||0}%;background:${col}"></i></span></div><div class="why">${esc(compWhy(p,k))}</div>`;
   }
-  h += `</div><div class="nodata" style="margin-top:6px">Jeder Baustein 0–100 im Vergleich zu allen ${POS_PL[p.pos]}; der Score ist der gewichtete Durchschnitt.</div></div>`;
+  const kd = p.kiDelta, kiR = kiOf(p);
+  h += `<div style="border-top:1px solid var(--line);padding-top:6px;margin-top:2px">= Rechnung</div><div class="v">${p.scoreBase ?? '–'}</div><div></div>`;
+  h += `<div>KI-Feinschliff</div><div class="v" style="color:${kd > 0 ? 'var(--accent)' : kd < 0 ? 'var(--bad)' : 'var(--muted)'}">${kd != null ? sgn(kd) : '–'}</div><div class="why" style="margin-top:0">${kd != null ? esc(kiR.t) : 'noch keine KI-Bewertung – der Bot prüft die News laufend'}</div>`;
+  h += `<div><b>= Score</b></div><div class="v">${p.score ?? '–'}</div><div></div>`;
+  h += `</div><div class="nodata" style="margin-top:6px">Jeder Baustein 0–100 im Vergleich zu allen ${POS_PL[p.pos]}; die Rechnung ist der gewichtete Durchschnitt. Die KI verfeinert sie mit News, Fitness und Rolle (−/+).</div></div>`;
 
   // Fitness & Gesundheit
   const [acls, alabel] = availBadge(p, sp);
@@ -1777,7 +1786,7 @@ function playerSheet(p){
   // News
   const ki = kiOf(p);
   h += `<div class="pvsec"><h3>News</h3>`;
-  if(ki) h += `<div class="pvnews ki"><b>KI-Einschätzung: ${ki.r}/100</b><small>${new Date(ki.ts).toLocaleString('de-CH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</small><p>${esc(ki.t)}</p></div>`;
+  if(ki) h += `<div class="pvnews ki"><b>KI-Feinschliff${p.kiDelta != null ? ': '+sgn(p.kiDelta)+' auf den Score' : ''}</b><small>${new Date(ki.ts).toLocaleString('de-CH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</small><p>${esc(ki.t)}</p></div>`;
   h += `<div id="pvNews"><div class="nodata">Sleeper-News werden geladen …</div></div>`;
   if(ki && ki.n && ki.n.length) h += `<div class="nodata" style="margin-top:8px">Schlagzeilen: ${ki.n.map(n => `${esc(n.date)} ${esc(n.title)} (${esc(n.source)})`).join(' · ')}</div>`;
   h += `</div>`;

@@ -19,7 +19,7 @@ export default async (req: Request) => {
     const body: any = await req.json().catch(() => null);
     const players = (Array.isArray(body?.players) ? body.players : [])
       .filter((p: any) => Number.isInteger(p?.id) && typeof p?.name === "string")
-      .map((p: any) => ({ id: p.id, name: String(p.name).slice(0, 60), club: String(p.club || "").slice(0, 5), pos: String(p.pos || "").slice(0, 4), line: String(p.line || "").slice(0, 300), ...(/^\d{1,10}$/.test(String(p.sid || "")) ? { sid: String(p.sid) } : {}) }));
+      .map((p: any) => ({ id: p.id, name: String(p.name).slice(0, 60), club: String(p.club || "").slice(0, 5), pos: String(p.pos || "").slice(0, 4), line: String(p.line || "").slice(0, 300), ...(/^\d{1,10}$/.test(String(p.sid || "")) ? { sid: String(p.sid) } : {}), ...(Number.isFinite(p.score) ? { score: Math.max(0, Math.min(100, Math.round(p.score))) } : {}) }));
     if (!players.length) return json(400, { error: "Keine Spieler" });
     await saveWatch(players);
     return json(200, { ok: true, count: players.length });
