@@ -186,7 +186,9 @@ td.muted{color:var(--muted)}
   #tbody td .nm{white-space:normal}
   #tbody td .sub{flex-wrap:wrap;white-space:normal;row-gap:2px}
   .fdr{flex-wrap:wrap}
-  #tbody td:first-child{max-width:150px}
+  #tbody td:first-child{max-width:175px}
+  .tablewrap{max-height:none;overflow:visible}
+  .tablewrap table{overflow:hidden}
   .cmp td .fdr span{font-size:9px;padding:1px 3px;min-width:0}
   .cmp td:first-child,.cmp th:first-child{width:32%}
   .cmp th small{font-size:10px}
@@ -1188,8 +1190,8 @@ function nameCell(p){
   const o = Object.keys(sleeper.users).length ? ownerOf(p) : undefined;
   const own = o === undefined && !Object.keys(sleeper.users).length ? '' :
     (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
-  return `<div class="nm"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${own}${news}${spHtml(p)}</div>
-    <div class="sub"><b>${esc(teams[p.teamId].short)}</b><span class="fdr sm">${opp}</span></div>`;
+  return `<div class="nm"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}</div>
+    <div class="sub"><b>${esc(teams[p.teamId].short)}</b>${own}<span class="fdr sm">${opp}</span></div>`;
 }
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
 function ownerLabel(p){
