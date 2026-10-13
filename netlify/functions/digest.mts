@@ -93,7 +93,7 @@ export default async (req: Request) => {
   const myR = (rosters || []).find((r: any) => r.owner_id === me);
   const injured = Object.keys(ownerOf).filter((pid) => P[pid]?.inj);
   const newsIds = [...new Set([...(myR?.players || []), ...injured, ...(full ? Object.keys(ownerOf) : [])])].slice(0, full ? 220 : 45);
-  const budget = Math.max(3000, 20000 - (Date.now() - t0));
+  const budget = Math.max(2000, (full ? 20000 : 8000) - (Date.now() - t0));
   const deadline = Date.now() + budget;
   const news: Record<string, any> = {};
   await pool(newsIds, 12, async (pid) => {
