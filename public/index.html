@@ -1043,7 +1043,8 @@ async function loadSleeper(leagueId){
   sleeper.unmatched = [];
   for(const [pid, owner] of Object.entries(ownerBySleeper)){
     total++;
-    if(!sp[pid] || sleeper.matchPid(pid) == null) sleeper.unmatched.push({ pid, name: sp[pid] ? (sp[pid].full_name || `${sp[pid].first_name||''} ${sp[pid].last_name||''}`).trim() || '(ohne Namen)' : pid, team: sp[pid]?.team_abbr || '', owner: sleeper.users[owner] || '' });
+    const isTeamSlot = sp[pid] && !SPOS[(sp[pid].fantasy_positions||[])[0] || sp[pid].position]; // z. B. Team-Defense, kein Einzelspieler
+    if(!isTeamSlot && (!sp[pid] || sleeper.matchPid(pid) == null)) sleeper.unmatched.push({ pid, name: sp[pid] ? (sp[pid].full_name || `${sp[pid].first_name||''} ${sp[pid].last_name||''}`).trim() || '(ohne Namen)' : pid, team: sp[pid]?.team_abbr || '', owner: sleeper.users[owner] || '' });
     const s = sp[pid];
     if(!s) continue;
     const abbr = s.team_abbr || (isNaN(+s.team) ? s.team : '');
