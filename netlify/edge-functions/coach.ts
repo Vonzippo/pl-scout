@@ -122,7 +122,7 @@ export default async (req: Request, context?: any) => {
   // Streaming (OpenRouter): Antwort erscheint laufend, kein 40-Sekunden-Limit der Edge Function
   if (body.stream && orKey) {
     const enc = new TextEncoder();
-    const orModelsS = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-sonnet-5.5,openai/gpt-5.6-luna,anthropic/claude-haiku-5.5").split(",").map((x) => x.trim()).filter(Boolean);
+    const orModelsS = (Netlify.env.get("OPENROUTER_MODELS") || "openai/gpt-5.6-luna,anthropic/claude-haiku-5.5").split(",").map((x) => x.trim()).filter(Boolean);
     // 1) Hauptmodell recherchiert selbst (native Websuche), 2) günstigeres Modell ebenfalls mit Suche, 3) Rest ohne Suche
     const planS: [string, boolean, number][] = orModelsS.map((m, i): [string, boolean, number] => [m, i < 2, i === 0 ? 4000 : 1500]);
     const stream = new ReadableStream({
@@ -192,7 +192,7 @@ export default async (req: Request, context?: any) => {
       ...(search ? { plugins: [{ id: "web", max_results: 4, search_prompt: `Aktuelle Web-Ergebnisse (heute ${today}, Saison ${season}). Nutze sie für News, Verletzungen und Aufstellungen und nenne die Quelle mit Datum:` }] } : {}),
       usage: { include: true } }),
   });
-  const orModels = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-sonnet-5.5,openai/gpt-5.6-luna,anthropic/claude-haiku-5.5").split(",").map((x) => x.trim()).filter(Boolean);
+  const orModels = (Netlify.env.get("OPENROUTER_MODELS") || "openai/gpt-5.6-luna,anthropic/claude-haiku-5.5").split(",").map((x) => x.trim()).filter(Boolean);
   const orPlan: [string, boolean, number][] = [[orModels[0], true, 2048], [orModels[0], false, 1024], ...orModels.slice(1).map((m): [string, boolean, number] => [m, false, 1024])];
   let orAnswer = "", orModel = "", orCost = 0, orErr = "", orSources: { url: string; title?: string }[] = [], orSearched = false;
   if (orKey) {

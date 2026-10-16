@@ -62,7 +62,7 @@ Antwort des Coaches (gekürzt): ${String(body?.answer || "").slice(0, 2500)}
 
 Halte NUR fest, was in späteren Gesprächen nützlich bleibt: Vorlieben und Ziele des Nutzers, getroffene oder geplante Entscheide (Trades, Waiver, Aufstellung), Abmachungen, was er von Ratschlägen hält, wichtige Empfehlungen des Coaches (mit Datum). Keine Werte, die sich ohnehin aus den Live-Daten ergeben (Punkte, Scores, FAAB-Stand). Kurze deutsche Sätze, Schweizer Rechtschreibung. Entferne Notizen, die überholt sind oder der neuen Info widersprechen.
 Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn nichts zu tun ist.`;
-    const model = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-haiku-5.5").split(",")[0].trim();
+    const model = (Netlify.env.get("OPENROUTER_MODELS") || "openai/gpt-5.6-luna").split(",")[0].trim();
     try {
       const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST", signal: AbortSignal.timeout(20000),
