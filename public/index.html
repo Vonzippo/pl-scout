@@ -760,10 +760,34 @@ function computeRaw(){
 }
 const posCorr = {};
 const PAST_W = [0.6, 0.3, 0.1]; // letzte, vorletzte, drittletzte Saison
-function seasonsOf(p){
-  if(!priorData || !priorData.p) return [];
-  const sns = priorData.seasons || [priorData.season];
-  return sns.map((sn, i) => ({ sn, w: PAST_W[i] || 0, h: i === 0 ? priorData.p[p.id] : priorData.h && priorData.h[p.id] && priorData.h[p.id][sn] })).filter(x => x.h && x.h.minutes > 0);
+const LEAGUE_F = { epl:1, laliga:0.9, bundesliga:0.9, seriea:0.9, ligue1:0.85 }; // Umrechnung auf Premier-League-Niveau
+const LEAGUE_DE = { epl:'PL', laliga:'LaLiga', bundesliga:'Bundesliga', seriea:'Serie A', ligue1:'Ligue 1' };
+let pastSl = null;
+async function loadPastSl(){ try { pastSl = await getJSON('/api/pastsl?v=' + Math.floor(Date.now() / 864e5)); dataStatus.past = { at: Date.now(), ok: true, info: `Sleeper-Stats ${(pastSl.seasons||[]).join(', ')}: ${Object.keys(pastSl.p||{}).length} Spieler${pastSl.missing ? ', '+pastSl.missing+' Spieltage fehlen noch' : ''}` }; } catch(e){ pastSl = null; } }
+const seasonLabel = se => `${se}/${String((+se + 1) % 100).padStart(2,'0')}`;
+function pastSeasonNums(){
+  if(pastSl && pastSl.seasons) return pastSl.seasons.map(Number);
+  if(priorData && priorData.seasons) return priorData.seasons.map(x => +x.slice(0,4));
+  return [];
+}
+function seasonsOf(p, corr){
+  const out = [], ss = sleeper.scoringSettings, sid = (sleeper.sidByFpl || {})[p.id];
+  const okSs = ss && ('pos_m_g' in ss);
+  pastSeasonNums().forEach((se, i) => {
+    const sn = seasonLabel(se), w = PAST_W[i] || 0;
+    const sl = okSs && sid && pastSl && pastSl.p && pastSl.p[sid] && pastSl.p[sid][se];
+    const fh = !priorData ? null : (priorData.season === sn ? priorData.p && priorData.p[p.id] : priorData.h && priorData.h[p.id] && priorData.h[p.id][sn]);
+    const xpts90 = fh && fh.minutes > 0 ? pointsFrom(histToP(p.pos, fh), scoring, true) / fh.minutes * 90 : null;
+    if(sl){
+      let pts = 0, min = 0, g = 0, a = 0, gs = 0, cs = 0; const lg = [];
+      for(const c in sl){ const x = sl[c]; pts += leaguePoints(x, ss) * (LEAGUE_F[c] || 0.8); min += x.min || 0; g += x.g || 0; a += x.at || 0; gs += x.gs || 0; cs += x.cs || 0; lg.push(LEAGUE_DE[c] || c); }
+      if(min > 0) out.push({ sn, w, min, pts, pts90: pts / min * 90, xpts90, goals: g, assists: a, cs, starts: gs, leagues: lg.join(' + '), src: 'Sleeper' });
+    } else if(fh && fh.minutes > 0){
+      const pts = pointsFrom(histToP(p.pos, fh), scoring, false) * (corr || posCorr[p.pos] || 1);
+      out.push({ sn, w, min: fh.minutes, pts, pts90: pts / fh.minutes * 90, xpts90, goals: fh.goals_scored, assists: fh.assists, cs: fh.clean_sheets, starts: fh.starts, leagues: 'PL', src: 'FPL (geschätzt)' });
+    }
+  });
+  return out;
 }
 // Score vergangener Saisons: wie gut war der Spieler in jener Saison (0–100, im Vergleich zu seiner Position derselben Saison)
 function histToP(pos, h){
@@ -772,35 +796,26 @@ function histToP(pos, h){
 }
 function computePast(){
   for(const p of players) p.past = [];
-  if(!priorData || !priorData.p) return;
-  const seasons = priorData.seasons || [priorData.season];
-  seasons.forEach((sn, si) => {
+  const nums = pastSeasonNums(); if(!nums.length) return;
+  const all = new Map(players.map(p => [p.id, seasonsOf(p)]));
+  nums.forEach(se => {
+    const sn = seasonLabel(se);
     for(const pos of ['GKP','DEF','MID','FWD']){
       const rows = [];
-      for(const p of players){
-        if(p.pos !== pos) continue;
-        const h = si === 0 ? priorData.p[p.id] : priorData.h && priorData.h[p.id] && priorData.h[p.id][sn];
-        if(!h || h.minutes < 90) continue;
-        const q = histToP(pos, h), pts = pointsFrom(q, scoring, false) * (posCorr[pos] || 1);
-        rows.push({ p, h, min:h.minutes, pts, pts90: pts / h.minutes * 90, xpts90: pointsFrom(q, scoring, true) / h.minutes * 90 });
-      }
-      const pool = rows.filter(r => r.min >= 900);
+      for(const p of players){ if(p.pos !== pos) continue; const x = all.get(p.id).find(y => y.sn === sn); if(x && x.min >= 90) rows.push({ p, x }); }
+      const pool = rows.filter(r => r.x.min >= 900);
       if(pool.length < 8) continue;
-      const m90 = pool.reduce((t,r)=>t+r.pts90,0)/pool.length, mx = pool.reduce((t,r)=>t+r.xpts90,0)/pool.length;
-      for(const r of rows){ const w = r.min / (r.min + 600); r.e = r.pts90*w + m90*(1-w); r.x = r.xpts90*w + mx*(1-w); }
-      const S = k => pool.map(r => r[k]).sort((a,b)=>a-b);
-      const SE = S('e'), SX = S('x'), ST = S('pts');
-      for(const r of rows){
-        const sc = Math.round(pctRank(SE, r.e) * 100); // nur Punkte pro gespielter Minute (Pkt/90, bei wenig Minuten vorsichtig gewichtet)
-        r.p.past.push({ season: sn, score: sc, min: r.min, pts: r.pts, pts90: r.pts90, goals: r.h.goals_scored, assists: r.h.assists, cs: r.h.clean_sheets, starts: r.h.starts });
-      }
+      const m90 = pool.reduce((t,r)=>t+r.x.pts90,0)/pool.length;
+      for(const r of rows){ const w = r.x.min / (r.x.min + 600); r.e = r.x.pts90*w + m90*(1-w); }
+      const SE = pool.map(r => r.e).sort((a,b)=>a-b);
+      for(const r of rows) r.p.past.push({ season: sn, w: r.x.w, score: Math.round(pctRank(SE, r.e) * 100), min: r.x.min, pts: r.x.pts, pts90: r.x.pts90, goals: r.x.goals, assists: r.x.assists, cs: r.x.cs, starts: r.x.starts, leagues: r.x.leagues, src: r.x.src });
     }
   });
   for(const p of players){
     p.past.sort((a,b) => b.season.localeCompare(a.season));
-    // Gesamtnote vergangene Saisons: 60 % letzte, 30 % vorletzte, 10 % drittletzte (fehlende Saisons werden umverteilt)
+    // Gesamtnote: 60 % letzte, 30 % vorletzte, 10 % drittletzte Saison (fehlende werden umverteilt)
     let ws = 0, sum = 0;
-    for(const x of p.past){ const i = seasons.indexOf(x.season); x.w = PAST_W[i] || 0; sum += x.w * x.score; ws += x.w; }
+    for(const x of p.past){ sum += x.w * x.score; ws += x.w; }
     p.pastScore = ws > 0 ? Math.round(sum / ws) : null;
   }
 }
@@ -818,17 +833,16 @@ function computeScores(){
     posCorr[pos] = corr;
     for(const p of grp){
       p.prior = null;
-      const hs = seasonsOf(p);
-      const use = hs.filter(x => x.h.minutes >= 450);
-      if(use.reduce((t,x)=>t+x.h.minutes,0) >= 900){
-        let wp = 0, wx = 0, ws = 0;
-        for(const x of use){ const q = histToP(p.pos, x.h); wp += x.w * est90(q) * corr; wx += x.w * pointsFrom(q, scoring, true) / x.h.minutes * 90; ws += x.w; }
-        p.prior = { min: use.reduce((t,x)=>t+x.h.minutes,0), pts90: wp/ws, xpts90: wx/ws, season: use.map(x => x.sn).join(', '), w: use.map(x => Math.round(x.w*100)).join('/') };
+      const use = seasonsOf(p, corr).filter(x => x.min >= 450);
+      if(use.reduce((t,x)=>t+x.min,0) >= 900){
+        let wp = 0, ws = 0, wx = 0, wxs = 0;
+        for(const x of use){ wp += x.w * x.pts90; ws += x.w; if(x.xpts90 != null){ wx += x.w * x.xpts90; wxs += x.w; } }
+        p.prior = { min: use.reduce((t,x)=>t+x.min,0), pts90: wp/ws, xpts90: wxs ? wx/wxs : null, season: use.map(x => x.sn).join(', '), w: use.map(x => Math.round(x.w*100)).join('/') };
       }
       const K = p.prior ? 600 : 270, w = p.minutes / (p.minutes + K);
       p.effW = w;
       p.raw.eff = p.pts90 * w + (p.prior ? p.prior.pts90 : m90) * (1 - w);
-      p.raw.xs = p.xpts90 * w + (p.prior ? p.prior.xpts90 : mx90) * (1 - w);
+      p.raw.xs = p.xpts90 * w + (p.prior && p.prior.xpts90 != null ? p.prior.xpts90 : mx90) * (1 - w);
     }
     const sorted = k => pool.map(p => p.raw[k]).sort((a,b)=>a-b);
     for(const p of grp) p.raw.xfp = p.xfp || 0;
@@ -1126,7 +1140,7 @@ let gwState = null, lastRefresh = 0, refreshing = false;
 const hhmm = t => t ? new Date(t).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '–';
 function renderDataStatus(){
   const bar = $('dataBar'); if(!bar) return;
-  const src = [['fpl','Premier-League-Stats'],['sleeper','Sleeper-Liga & Kader'],['stats','Echte Sleeper-Punkte'],['proj','Sleeper-Prognose'],['ki','KI-Bewertungen'],['prior','Vorsaison (Klasse)']];
+  const src = [['fpl','Premier-League-Stats'],['sleeper','Sleeper-Liga & Kader'],['stats','Echte Sleeper-Punkte'],['proj','Sleeper-Prognose'],['ki','KI-Bewertungen'],['prior','Vorsaisons PL (FPL)'],['past','Vorsaisons (Sleeper)']];
   const problems = src.filter(([k]) => dataStatus[k] && !dataStatus[k].ok).length;
   const unm = (sleeper.unmatched || []).length;
   const gw = gwState ? (gwState.checked ? `GW ${gwState.id} ausgewertet` : `GW ${gwState.id} läuft – Punkte live`) : '';
@@ -1835,7 +1849,7 @@ function compWhy(p, k){
   switch(k){
     case 'form': return p.l10games ? `Ø ${fmt(p.l10,1)} Pkt in seinen letzten ${p.l10games} Einsätzen${p.missed ? ` (${p.missed} verpasste Spiele zählen nicht als 0)` : ''}` : `Ø ${fmt(p.l10,1)} Pkt pro Spiel`;
     case 'eff': return p.prior ? `${fmt(p.pts90,1)} Pkt/90 diese Saison (${p.minutes} Min.) · Vorsaisons (${p.prior.season}, ${p.prior.w} %): ${fmt(p.prior.pts90,1)} Pkt/90 → diese Saison zählt ${Math.round(p.effW*100)}%` : `${fmt(p.pts90,1)} Pkt pro 90 Min.${p.minutes < 600 ? ' (wenig Minuten, keine PL-Vorsaison)' : ''}`;
-    case 'xs': return `${fmt(p.xpts90,1)} erwartete Pkt pro 90 (aus xG/xA)${p.prior ? ` · Vorsaisons ${fmt(p.prior.xpts90,1)}` : ''}`;
+    case 'xs': return `${fmt(p.xpts90,1)} erwartete Pkt pro 90 (aus xG/xA)${p.prior && p.prior.xpts90 != null ? ` · Vorsaisons ${fmt(p.prior.xpts90,1)}` : ''}`;
     case 'min': return `Ø ${Math.round(p.minL5)} Min. in den letzten 5 · Startelf in ${Math.round((p.startRate||0)*100)}% der Spiele`;
     case 'inv': return i ? (p.pos === 'GKP' ? `${fmt(i.p90,0)} Pässe, ${fmt(i.sv90,1)} Paraden pro 90` :
       `${fmt(i.p90,0)} Pässe · ${fmt(i.kp90,1)} Key Passes · ${fmt(i.sat90,1)} Schüsse · ${fmt(i.def90,1)} Tackles+Int. pro 90`) : 'zu wenig Einsatzminuten für eine Aussage';
@@ -1946,10 +1960,10 @@ function playerSheet(p){
 
   // Vergangene Saisons
   if(p.past && p.past.length){
-    h += `<div class="pvsec"><h3>Vergangene Saisons (Premier League)</h3><div style="overflow-x:auto"><table class="pvgames"><thead><tr><th class="l">Saison</th><th>Score</th><th>Gew.</th><th>Min</th><th>Pkt*</th><th>Pkt/90</th><th>T</th><th>A</th><th>${p.pos==='GKP'||p.pos==='DEF'?'ZN':'Starts'}</th></tr></thead><tbody>` +
-      p.past.map(x => `<tr><td class="l">${esc(x.season)}</td><td><span class="score ${tierOf(x.score)[0]}">${x.score}</span></td><td>${Math.round((x.w||0)*100)}%</td><td>${x.min}</td><td>${fmt(x.pts,0)}</td><td>${fmt(x.pts90,1)}</td><td>${x.goals}</td><td>${x.assists}</td><td>${p.pos==='GKP'||p.pos==='DEF'?x.cs:x.starts}</td></tr>`).join('') +
-      `<tr><td class="l"><b>Gesamt</b></td><td><span class="score ${tierOf(p.pastScore)[0]}">${p.pastScore}</span></td><td colspan="6" class="l" style="color:var(--muted)">gewichtet 60/30/10 %</td></tr></tbody></table></div><div class="nodata">Score pro Saison = Punkte pro gespielter Minute (Pkt/90) im Vergleich zu allen ${POS_PL[p.pos]} jener Saison; wenige Minuten zählen vorsichtiger. * Punkte nach eurer Liga-Wertung, aus den offiziellen Saisonwerten hochgerechnet. Ältere Saisons ohne Tackle-/Klärungsdaten unterschätzen Verteidiger etwas. Dieselben Pkt/90 (60/30/10) fliessen als «Klasse» in die Effizienz des aktuellen Scores.</div></div>`;
-  } else h += `<div class="pvsec"><h3>Vergangene Saisons</h3><div class="nodata">Keine Premier-League-Saison in den letzten 3 Jahren (Neuzugang aus einer anderen Liga oder Aufsteiger).</div></div>`;
+    h += `<div class="pvsec"><h3>Vergangene Saisons</h3><div style="overflow-x:auto"><table class="pvgames"><thead><tr><th class="l">Saison</th><th class="l">Liga</th><th>Score</th><th>Gew.</th><th>Min</th><th>Pkt*</th><th>Pkt/90</th><th>T</th><th>A</th><th>${p.pos==='GKP'||p.pos==='DEF'?'ZN':'Starts'}</th></tr></thead><tbody>` +
+      p.past.map(x => `<tr><td class="l">${esc(x.season)}</td><td class="l" title="${esc(x.src)}">${esc(x.leagues||'PL')}</td><td><span class="score ${tierOf(x.score)[0]}">${x.score}</span></td><td>${Math.round((x.w||0)*100)}%</td><td>${x.min}</td><td>${fmt(x.pts,0)}</td><td>${fmt(x.pts90,1)}</td><td>${x.goals}</td><td>${x.assists}</td><td>${p.pos==='GKP'||p.pos==='DEF'?x.cs:x.starts}</td></tr>`).join('') +
+      `<tr><td class="l"><b>Gesamt</b></td><td></td><td><span class="score ${tierOf(p.pastScore)[0]}">${p.pastScore}</span></td><td colspan="6" class="l" style="color:var(--muted)">gewichtet 60/30/10 %</td></tr></tbody></table></div><div class="nodata">Score pro Saison = Punkte pro gespielter Minute (Pkt/90) im Vergleich zu allen ${POS_PL[p.pos]} jener Saison; wenige Minuten zählen vorsichtiger. * Punkte nach eurer Liga-Wertung: exakt aus den Sleeper-Stats (Premier League, LaLiga, Bundesliga, Serie A, Ligue 1; andere Ligen auf PL-Niveau umgerechnet: ×0.9, Ligue 1 ×0.85). Ohne Sleeper-Daten aus den offiziellen PL-Saisonwerten geschätzt. Spieler aus der Championship oder kleineren Ligen haben noch keine Werte. Dieselben Pkt/90 (60/30/10) fliessen als «Klasse» in die Effizienz des aktuellen Scores.</div></div>`;
+  } else h += `<div class="pvsec"><h3>Vergangene Saisons</h3><div class="nodata">Keine Daten der letzten 3 Saisons aus Premier League, LaLiga, Bundesliga, Serie A oder Ligue 1 (z. B. Aufsteiger aus der Championship oder Zuzug aus einer kleineren Liga).</div></div>`;
 
   // Saison
   h += `<div class="pvsec"><h3>Saison</h3><div class="pvfacts" style="grid-template-columns:repeat(4,1fr)">
@@ -2148,6 +2162,7 @@ for(const id of ['foldTop','foldKi','foldFilter','foldMem']){ const d = $(id); i
     renderAll();
     loadKi().then(renderAll);
     loadPrior().then(renderAll);
+    loadPastSl().then(renderAll);
     loadHistory().then(async () => {
       renderAll();
       await calibrate();
