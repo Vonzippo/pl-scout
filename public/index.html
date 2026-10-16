@@ -809,7 +809,7 @@ function computeScores(){
 /* ---------- KI-Bot ---------- */
 let kiData = { ratings:{}, meta:{} };
 let priorData = null; // Vorsaison (FPL) als «Klasse»-Prior
-async function loadPrior(){ try { priorData = await getJSON('/api/prior'); dataStatus.prior = { at: Date.now(), ok: true, info: `Vorsaison ${priorData.season || '?'}: ${Object.values(priorData.p||{}).filter(Boolean).length} Spieler${priorData.missing ? ', '+priorData.missing+' fehlen noch' : ''}` }; } catch(e){ priorData = null; } }
+async function loadPrior(){ try { priorData = await getJSON('/api/prior?v=' + Math.floor(Date.now() / 864e5)); dataStatus.prior = { at: Date.now(), ok: true, info: `Vorsaison ${priorData.season || '?'}: ${Object.values(priorData.p||{}).filter(Boolean).length} Spieler${priorData.missing ? ', '+priorData.missing+' fehlen noch' : ''}` }; } catch(e){ priorData = null; } }
 const KI_MAX_AGE = 48 * 3600e3;
 function kiOf(p){ const r = kiData.ratings[p.id]; return r && Date.now() - r.ts < KI_MAX_AGE ? r : null; }
 // KI-Feinschliff: die KI baut auf dem berechneten Score auf; ihre Abweichung wird auf den aktuellen Score gelegt

@@ -6,6 +6,6 @@ export default async () => {
   if (!d || d.season !== lastSeasonName() || (d.missing ?? 1) > 0) { try { await collectPrior(140, 18000); } catch { /* egal */ } d = await priorStore().get("prior", { type: "json" }).catch(() => null); }
   const complete = d && d.missing === 0;
   return new Response(JSON.stringify(d || { p: {} }), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=300",
-    "netlify-cdn-cache-control": complete ? "public, durable, s-maxage=21600" : "public, s-maxage=60" } });
+    "netlify-cdn-cache-control": complete ? "public, durable, s-maxage=21600" : "no-store" } });
 };
 export const config: Config = { path: "/api/prior" };
