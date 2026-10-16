@@ -918,6 +918,7 @@ function kiDelta(p){
   const r = kiOf(p); if(!r || !(r.v >= 2)) return null;
   let d = r.b != null ? r.r - r.b : r.r - p.scoreBase;
   d = Math.max(-8, Math.min(10, d)); // nur Feinschliff: Verletzungen/Sperren stecken in Prognose und xMin
+  if(r.v < 4 && p.hurt && d < 0) d = 0; // ältere Bewertungen zogen noch für Verletzungen ab → ignorieren, bis neu bewertet
   // Widerspricht die KI den offiziellen Daten (fit gemeldet, spielt regelmässig), höchstens −10
   const sp = (sleeper.spByFpl || {})[p.id];
   if(p.status === 'a' && !(sp && sp.injury_status) && (p.minL5 || 0) >= 45) d = Math.max(-10, d);
