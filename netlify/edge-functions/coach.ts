@@ -120,7 +120,7 @@ export default async (req: Request) => {
       messages: [{ role: "system", content: systemPrompt(today, season) + digest + newsBlock + (withSearch ? "" :
         "\n\n(Websuche ist gerade nicht verfügbar – stütze dich auf die Schlagzeilen und Daten oben.)") }, ...messages],
       ...(withSearch ? { tools: [{ type: "browser_search" }], tool_choice: "auto" } : {}),
-      reasoning_effort: effort,
+      ...(model.startsWith("openai/") ? { reasoning_effort: effort } : {}),
       temperature: 0.6,
       max_completion_tokens: 4096,
     }),
@@ -128,17 +128,17 @@ export default async (req: Request) => {
   // Ausweichstufen: 1) mit Websuche, 2) nochmals mit Websuche, 3) ohne Websuche (Schlagzeilen genügen),
   // 4) kleineres Modell. Bei Tageslimit direkt aufs kleinere Modell (eigenes Kontingent).
   const big = Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b", small = "openai/gpt-oss-20b";
-  const plan: [string, boolean, string][] = [[big, true, "medium"], [big, true, "low"], [big, false, "medium"], [small, false, "medium"]];
+  // weitere Modelle mit eigenem Tageskontingent als letzte Ausweichstufe
+  const plan: [string, boolean, string][] = [[big, true, "medium"], [big, true, "low"], [big, false, "medium"], [small, false, "medium"], ["llama-3.3-70b-versatile", false, ""], ["qwen/qwen3-32b", false, ""]];
   let res: Response | null = null, data: any = null, usedModel = big, lastErr = "";
   for (let i = 0; i < plan.length; i++) {
     let [m, search, effort] = plan[i];
-    if (lastErr.startsWith("429")) { if (m === big) continue; }
+    if (lastErr.startsWith("429") && m === big) continue;
     if (Date.now() - t0 > 30000) break; // Zeitbudget der Edge Function
     try { res = await call(m, search, effort); } catch (e) { lastErr = "timeout"; continue; }
     data = null; try { data = await res.json(); } catch { /* leer */ }
     if (res.ok && data?.choices?.[0]?.message?.content) { usedModel = m; break; }
     lastErr = `${res.status} ${data?.error?.message || ""}`;
-    if (res.status === 429 && m === small) break;
     res = null;
   }
   if (!res || !res.ok) {

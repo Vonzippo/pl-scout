@@ -1691,7 +1691,8 @@ function renderChat(){
     const act = m.queries && m.queries.length ? `<div class="activity">${m.queries.map(q=>`<span>🔎 ${esc(q)}</span>`).join('')}</div>` : '';
     const src = m.sources && m.sources.length ? `<div class="sources">Quellen: ${m.sources.map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`).join('')}</div>` : '';
     const nws = m.news && m.news.length ? `<details class="sources"><summary style="cursor:pointer">📰 ${m.news.length} aktuelle Schlagzeilen gelesen</summary><ul style="margin:6px 0;padding-left:18px">${m.news.map(n=>`<li>${esc(n.date)} · <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span>(${esc(n.source)})</span></li>`).join('')}</ul></details>` : '';
-    return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content)}${nws}${src}</div>`;
+    const alt = m.error && m.q ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="primary" data-claudeq="${esc(m.q)}">✳️ Mit Claude beantworten (dein Abo, ohne API)</button><button class="ghost" data-claudeapp="${esc(m.q)}">In Claude-App</button></div>` : '';
+    return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content)}${alt}${nws}${src}</div>`;
   }).join('');
   log.lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
@@ -1723,7 +1724,7 @@ async function askCoach(){
   chatBusy = true; $('askBtn').disabled = true; $('chatIn').value = '';
   // Erste Frage bekommt alle Daten; Folgefragen ebenfalls (Kader kann sich ändern), Anzeige zeigt nur die Frage
   chat.push({ role:'user', content: buildPrompt(question), shown: question });
-  const ai = { role:'assistant', pending:true, content:'' };
+  const ai = { role:'assistant', pending:true, content:'', q: question };
   chat.push(ai); renderChat();
   try {
     const history = chat.filter(m => m !== ai && !m.error && !m.pending);
@@ -2034,6 +2035,11 @@ $('chatClear').addEventListener('click', () => { if(!chatBusy){ chat.length = 0;
 $('coachKey').value = store.get('coachKey') || '';
 $('coachKey').addEventListener('input', e => { store.set('coachKey', e.target.value); e.target.classList.remove('need'); });
 $('chatIn').addEventListener('input', refreshPreview);
+$('chatlog').addEventListener('click', e => {
+  const b = e.target.closest('[data-claudeq],[data-claudeapp]'); if(!b) return;
+  const t = buildPrompt(b.dataset.claudeq || b.dataset.claudeapp);
+  if(b.dataset.claudeq) window.open('https://claude.ai/new?q=' + encodeURIComponent(t), '_blank', 'noopener'); else location.href = 'claude://claude.ai/new?q=' + encodeURIComponent(t);
+});
 $('openWeb').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); window.open('https://claude.ai/new?q=' + encodeURIComponent(t), '_blank', 'noopener'); });
 $('openApp').addEventListener('click', () => { const t = buildPrompt(currentQuestion()); location.href = 'claude://claude.ai/new?q=' + encodeURIComponent(t); });
 $('copyPrompt').addEventListener('click', async () => { coachMsg(await copyText(buildPrompt(currentQuestion())) ? 'Kopiert – in Claude einfügen.' : 'Kopieren nicht möglich – Vorschau unten markieren.'); });

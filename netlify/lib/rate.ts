@@ -58,7 +58,8 @@ export function todayAndSeason() {
 
 export async function rateBatch(infos: Info[], apiKey: string, model?: string): Promise<Record<number, Rating>> {
   // eigenes Kontingent: kleineres Modell zuerst, bei Limit das nächste
-  const models = model ? [model] : ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3-32b"];
+  // Bot nutzt nie das grosse 120b-Modell – dessen Tageskontingent bleibt für den Coach reserviert
+  const models = model ? [model] : ["openai/gpt-oss-20b", "qwen/qwen3-32b", "llama-3.3-70b-versatile"];
   const { today, season } = todayAndSeason();
   const [news, sl] = await Promise.all([
     Promise.all(infos.map((i) => headlinesFor(i.name))),
