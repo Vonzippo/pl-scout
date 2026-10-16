@@ -167,6 +167,10 @@ td.muted{color:var(--muted)}
 .fold[open]{padding-bottom:2px}
 .fold>.status{margin-top:4px}
 .fold>.filters{margin-top:6px}
+.rchips{white-space:normal}
+.rchip{display:inline-block;font-size:11px;padding:1px 6px;margin:1px 3px 1px 0;border-radius:6px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap}
+.rchip.sp{color:var(--warn);border-color:#5a4520}
+.keyt td{vertical-align:top}
 .memlist{display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:13px}
 .memrow{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .memrow small{color:var(--muted)}
@@ -293,6 +297,11 @@ body.noscroll{overflow:hidden}
       <summary style="cursor:pointer;font-weight:700">⚽ Premier League – Tabelle & Teamstärken</summary>
       <div class="empty" style="margin:6px 0">Rang 1–20 (grün = stark, rot = schwach) · Angriff = xG/Spiel · Mitte = Fantasy-Punkte der Mittelfeldspieler · Abwehr = xG gegen/Spiel · Form = letzte 5 (S/U/N)</div>
       <div style="overflow:auto"><table class="pltab"><thead><tr><th>#</th><th class="l">Klub</th><th>Pkt</th><th>Tore</th><th class="l">Form</th><th>Angr.</th><th>Mitte</th><th>Abw.</th></tr></thead><tbody id="plBody"></tbody></table></div>
+    </details>
+    <details class="card" id="keyCard" style="margin-bottom:12px">
+      <summary style="cursor:pointer;font-weight:700">🎯 Schlüsselspieler je Team <span class="empty" style="font-weight:400">über wen die Rollen laufen</span></summary>
+      <div class="empty" style="margin:6px 0">Pro Klub der Spieler, der die meisten Rollen auf sich vereint: Nr. 1 im Team bei Punkten, Key Passes, Schüssen, Tor-Beteiligungen, Pässen und Standards (P = Elfmeter, FK = Freistösse, E = Ecken). Anteil = sein Anteil an allen Fantasy-Punkten des Klubs diese Saison (eure Wertung). Doppeltipp = Spielerprofil.</div>
+      <div style="overflow:auto"><table class="pltab keyt"><thead><tr><th class="l">Klub</th><th class="l">Schlüsselspieler</th><th>Anteil</th><th class="l">Nr. 1 bei</th><th class="desk">Score</th></tr></thead><tbody id="keyBody"></tbody></table></div>
     </details>
     <div id="teamsEmpty" class="card empty">Lade oben deine Sleeper-Liga, dann siehst du hier dein Team und die Teams deiner Mitspieler.</div>
     <div id="teamsBody" hidden>
@@ -1550,6 +1559,40 @@ function renderTips(){
     `<li><span class="pos ${t.pos}">${t.pos}</span> <b>${esc(t.in.name)}</b> (${esc(teams[t.in.teamId].short)}, ${fmt(t.in.proj)}) für ${esc(t.out.name)} (${fmt(t.out.proj)}) · <b>+${fmt(t.gain)}</b> Pkt</li>`).join('') + '</ul>';
 }
 /* ---------- Premier-League-Tabelle & Teamstärken ---------- */
+// Schlüsselspieler: über wen laufen die Rollen eines Klubs?
+function renderKeyPlayers(){
+  const body = $('keyBody'); if(!body || !players.length) return;
+  const clubs = {};
+  for(const p of players){
+    const rs = (sleeper.rawStats || {})[p.id] || {};
+    let kp = 0, sat = 0, pass = 0;
+    for(const w in rs){ kp += rs[w].kp || 0; sat += rs[w].sat || 0; pass += rs[w].p_att || 0; }
+    const pts = p.ptsReal != null ? p.ptsReal : Math.max(0, p.pts || 0);
+    (clubs[p.teamId] ||= []).push({ p, pts: Math.max(0, pts), kp, sat, pass, ga: (p.goals || 0) + (p.assists || 0), sp: p.setPieces || [] });
+  }
+  const CATS = [['pts','Punkte'],['kp','Key Passes'],['sat','Schüsse'],['ga','Tor-Beteiligung'],['pass','Pässe']];
+  const rows = [];
+  for(const tid in clubs){
+    const L = clubs[tid];
+    const tot = k => L.reduce((t,x)=>t+x[k],0) || 1;
+    for(const x of L){ x.roles = []; x.share = x.pts / tot('pts'); }
+    for(const [k, lbl] of CATS){ const top = L.reduce((a,b) => (b[k] > (a ? a[k] : 0) ? b : a), null); if(top && top[k] > 0) top.roles.push({ k, lbl, sh: top[k] / tot(k) }); }
+    for(const x of L) for(const sp of x.sp) x.roles.push({ k:'sp', lbl: ({ Elfmeter:'P', Freistoss:'FK', Ecken:'E' })[sp] || sp });
+    const rank = x => x.roles.length * 10 + x.share * 100;
+    const best = L.filter(x => x.roles.length).sort((a,b) => rank(b) - rank(a));
+    if(!best.length) continue;
+    rows.push({ tid, a: best[0], b: best[1] });
+  }
+  rows.sort((r1,r2) => r2.a.share - r1.a.share);
+  body.innerHTML = rows.map(({ tid, a, b }) => {
+    const p = a.p, o = ownerOf(p);
+    const own = !Object.keys(sleeper.users).length ? '' : (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
+    const chips = a.roles.map(r => `<span class="rchip${r.k==='sp'?' sp':''}" title="${r.sh != null ? Math.round(r.sh*100)+'% des Teams' : 'Standardschütze Nr. 1'}">${esc(r.lbl)}${r.sh != null ? ' '+Math.round(r.sh*100)+'%' : ''}</span>`).join('');
+    return `<tr data-pid="${p.id}"><td class="l"><b>${esc(teams[tid].short)}</b></td>
+      <td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${own}${b ? `<div class="sub" style="font-size:11px;color:var(--muted)">2.: ${esc(b.p.name)} (${b.roles.length} Rollen)</div>` : ''}</td>
+      <td><b>${Math.round(a.share*100)}%</b></td><td class="l rchips">${chips}</td><td class="desk">${scoreHtml(p)}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="l nodata">Noch keine Saisondaten.</td></tr>';
+}
 function renderPLTable(){
   const body = $('plBody'); if(!body || !Object.keys(teams).length) return;
   const T = {};
@@ -1622,7 +1665,7 @@ function teamStats(r){
   };
 }
 function renderTeams(){
-  renderPLTable();
+  renderPLTable(); renderKeyPlayers();
   const has = sleeper.rosters.length > 0;
   $('teamsEmpty').hidden = has; $('teamsBody').hidden = !has;
   $('hzLabel').textContent = state.horizon;
