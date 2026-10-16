@@ -137,7 +137,8 @@ export default async (req: Request, context?: any) => {
       try {
         const note = search ? "" : "\n\n(Hinweis: Websuche ist gerade nicht verfügbar – stütze dich auf die Live-Daten, Sleeper-News und Schlagzeilen oben und sage, wenn etwas unklar ist.)";
         const r = await orCall(m, [{ role: "system", content: sys + note }, ...messages], 8000, think, search, Math.min(left, search ? 28000 : left));
-        const d: any = await r.json().catch(() => null);
+        const raw = await r.text().catch(() => "");
+        let d: any = null; try { d = JSON.parse(raw.trim()); } catch { /* unten melden */ }
         const msg = d?.choices?.[0]?.message || {};
         const c = msg.content;
         if (r.ok && c && String(c).trim()) {
@@ -145,7 +146,7 @@ export default async (req: Request, context?: any) => {
           for (const an of msg.annotations || []) { const u = an?.url_citation; if (u?.url && !orSources.some((x) => x.url === u.url) && orSources.length < 8) orSources.push({ url: u.url, title: u.title }); }
           break;
         }
-        orErr = `${r.status} ${d?.error?.message || (r.ok ? "leere Antwort (" + (d?.choices?.[0]?.finish_reason || "?") + ")" : "")}`.trim();
+        orErr = `${m}: ${r.status} ${d?.error?.message || d?.choices?.[0]?.error?.message || (r.ok ? "leere Antwort (" + (d?.choices?.[0]?.finish_reason || raw.replace(/\s+/g, " ").slice(0, 160)) + ")" : "")}`.trim();
       } catch (e) { orErr = `Zeitüberschreitung (${m}${search ? " mit Websuche" : ""})`; }
     }
   }
@@ -173,7 +174,7 @@ export default async (req: Request, context?: any) => {
   // 4) kleineres Modell. Bei Tageslimit direkt aufs kleinere Modell (eigenes Kontingent).
   const big = Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b", small = "openai/gpt-oss-20b";
   // weitere Modelle mit eigenem Tageskontingent als letzte Ausweichstufe
-  const plan: [string, boolean, string][] = [[big, true, "medium"], [big, true, "low"], [big, false, "medium"], [small, false, "medium"], ["llama-3.3-70b-versatile", false, ""]];
+  const plan: [string, boolean, string][] = [[big, true, "medium"], [big, true, "low"], [big, false, "medium"], [small, false, "medium"]];
   let res: Response | null = null, data: any = null, usedModel = big, lastErr = "";
   for (let i = 0; i < plan.length; i++) {
     let [m, search, effort] = plan[i];
