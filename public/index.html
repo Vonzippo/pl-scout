@@ -167,6 +167,16 @@ td.muted{color:var(--muted)}
 .fold[open]{padding-bottom:2px}
 .fold>.status{margin-top:4px}
 .fold>.filters{margin-top:6px}
+.cpop{position:fixed;inset:0;background:rgba(3,6,10,.6);z-index:55;display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;padding:60px 14px}
+.cpop[hidden]{display:none}
+.cpbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;padding:14px 16px 16px;position:relative}
+.cpbox h3{margin:0 44px 2px 0;font-size:17px}
+.cpbox .cpsub{color:var(--muted);font-size:12px;margin-bottom:10px}
+.cpbox table td,.cpbox table th{padding:6px 6px;font-size:13px}
+.cpbox tbody tr{cursor:pointer}
+.cpbox tr.cpzero td{opacity:.55}
+.pltab td[data-grp]{cursor:zoom-in}
+@media(max-width:640px){.cpop{padding:0;align-items:flex-end}.cpbox{border-radius:14px 14px 0 0;max-height:85vh;overflow-y:auto;border:0}}
 .rchips{white-space:normal}
 .rchip{display:inline-block;font-size:11px;padding:1px 6px;margin:1px 3px 1px 0;border-radius:6px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap}
 .rchip.sp{color:var(--warn);border-color:#5a4520}
@@ -295,7 +305,7 @@ body.noscroll{overflow:hidden}
   <section id="viewTeams" hidden>
     <details class="card" id="plCard" open style="margin-bottom:12px">
       <summary style="cursor:pointer;font-weight:700">⚽ Premier League – Tabelle & Teamstärken</summary>
-      <div class="empty" style="margin:6px 0">Rang 1–20 (grün = stark, rot = schwach) · Angriff = xG/Spiel · Mitte = Fantasy-Punkte der Mittelfeldspieler · Abwehr = xG gegen/Spiel · Form = letzte 5 (S/U/N)</div>
+      <div class="empty" style="margin:6px 0">Rang 1–20 (grün = stark, rot = schwach) · Angriff = xG/Spiel · Mitte = Fantasy-Punkte der Mittelfeldspieler · Abwehr = xG gegen/Spiel · Form = letzte 5 (S/U/N) · <b>Klub antippen = ganzer Kader, Angr./Mitte/Abw. antippen = Spieler dieser Linie</b></div>
       <div style="overflow:auto"><table class="pltab"><thead><tr><th>#</th><th class="l">Klub</th><th>Pkt</th><th>Tore</th><th class="l">Form</th><th>Angr.</th><th>Mitte</th><th>Abw.</th></tr></thead><tbody id="plBody"></tbody></table></div>
     </details>
     <details class="card" id="keyCard" style="margin-bottom:12px">
@@ -420,6 +430,7 @@ body.noscroll{overflow:hidden}
 
   </section>
 </main>
+<div id="clubPop" class="cpop" hidden><div class="cpbox" role="dialog" aria-modal="true"><button class="pvx ghost" data-cpclose title="Schliessen">✕</button><div id="cpBody"></div></div></div>
 <div id="pv" class="pv" hidden><div class="pvbox" role="dialog" aria-modal="true" aria-label="Spielerprofil"><button class="pvx ghost" data-pvclose title="Schliessen">✕</button><div id="pvBody"></div></div></div>
 <footer>Daten: offizielle Fantasy Premier League API (Stats & Spielplan) und Sleeper API (Liga & Kader). Prognose = eigene Punkteregeln × Einsatzminuten × Gegnerstärke – eine Orientierung, keine Garantie.</footer>
 
@@ -1623,14 +1634,14 @@ function renderPLTable(){
   const badge = (r, tip, val) => `<span class="rk ${cls(r)}" title="${esc(tip)}">${r}</span><div class="desk" style="font-size:10px;color:var(--muted)">${val}</div>`;
   body.innerHTML = arr.map((t,i) => {
     const d = t.gf - t.ga;
-    return `<tr class="${i<4?'cl-top':''}${i>=17?' cl-down':''}"><td>${i+1}</td>
+    return `<tr class="${i<4?'cl-top':''}${i>=17?' cl-down':''}" data-club="${t.id}" style="cursor:pointer"><td>${i+1}</td>
       <td class="l"><b>${esc(teams[t.id].short)}</b><span class="desk" style="color:var(--muted);font-size:11px"> ${esc(teams[t.id].name)}</span></td>
       <td><b>${t.pts}</b></td>
       <td title="Tore : Gegentore (Differenz ${d>0?'+':''}${d})">${t.gf}:${t.ga}<span class="desk" style="color:${d>0?'var(--accent)':d<0?'var(--bad)':'var(--muted)'};font-size:11px"> ${d>0?'+':''}${d}</span></td>
       <td class="l"><span class="frm">${t.form.slice(-5).map(r => `<i class="${r}">${r==='W'?'S':r==='D'?'U':'N'}</i>`).join('')}</span></td>
-      <td>${badge(t.r_xgf, `Angriff: ${fmt(t.xgf,2)} xG pro Spiel, ${t.gf} Tore`, fmt(t.xgf,1)+' xG')}</td>
-      <td>${badge(t.r_midPts, `Mittelfeld: ${fmt(t.midPts,1)} Fantasy-Punkte der Mittelfeldspieler pro Spiel`, fmt(t.midPts,0)+' Pkt')}</td>
-      <td>${badge(t.r_xga, `Abwehr: ${fmt(t.xga,2)} erwartete Gegentore pro Spiel, ${t.ga} Gegentore`, fmt(t.xga,1)+' xGA')}</td></tr>`;
+      <td data-grp="FWD">${badge(t.r_xgf, `Angriff: ${fmt(t.xgf,2)} xG pro Spiel, ${t.gf} Tore`, fmt(t.xgf,1)+' xG')}</td>
+      <td data-grp="MID">${badge(t.r_midPts, `Mittelfeld: ${fmt(t.midPts,1)} Fantasy-Punkte der Mittelfeldspieler pro Spiel`, fmt(t.midPts,0)+' Pkt')}</td>
+      <td data-grp="DEF">${badge(t.r_xga, `Abwehr: ${fmt(t.xga,2)} erwartete Gegentore pro Spiel, ${t.ga} Gegentore`, fmt(t.xga,1)+' xGA')}</td></tr>`;
   }).join('');
 }
 
@@ -1882,6 +1893,36 @@ function renderScoring(){
 }
 function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); refreshPreview(); renderDataStatus(); }
 
+/* ---------- Klub-Fenster (Teams → PL-Tabelle) ---------- */
+const GRP = { FWD:{ pos:['FWD'], t:'Sturm' }, MID:{ pos:['MID'], t:'Mittelfeld' }, DEF:{ pos:['DEF','GKP'], t:'Abwehr & Tor' }, ALL:{ pos:['GKP','DEF','MID','FWD'], t:'ganzer Kader' } };
+function openClub(tid, grp = 'ALL'){
+  const g = GRP[grp] || GRP.ALL, order = { GKP:0, DEF:1, MID:2, FWD:3 };
+  const list = players.filter(p => p.teamId === +tid && g.pos.includes(p.pos))
+    .sort((a,b) => grp === 'ALL' ? (order[a.pos] - order[b.pos]) || ((b.score||0) - (a.score||0)) : (b.score||0) - (a.score||0));
+  const played = list.filter(p => p.minutes > 0 || ownerOf(p));
+  const rest = list.length - played.length;
+  const row = p => {
+    const o = ownerOf(p);
+    const own = !Object.keys(sleeper.users).length ? '' : (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
+    const inj = p.news ? ` <span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
+    return `<tr data-cpid="${p.id}" class="${p.minutes ? '' : 'cpzero'}"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span>${inj} ${own}</td><td>${scoreHtml(p)}</td><td>${progHtml(p)}</td><td class="mono">${Math.round(p.minL5||0)}</td><td class="mono">${fmt(p.pts90,1)}</td></tr>`;
+  };
+  $('cpBody').innerHTML = `<h3>${esc(teams[tid].name)} · ${g.t}</h3><div class="cpsub">${played.length} Spieler${rest ? ` · ${rest} ohne Einsatz ausgeblendet` : ''} · antippen = Spielerprofil</div>
+    <table><thead><tr><th class="l">Spieler</th><th>Score</th><th>Progn.</th><th title="Ø Minuten letzte 5 Spiele">Min L5</th><th>Pkt/90</th></tr></thead><tbody>${played.map(row).join('') || '<tr><td colspan="5" class="l nodata">Keine Spieler.</td></tr>'}</tbody></table>`;
+  $('clubPop').hidden = false; $('clubPop').scrollTop = 0; document.body.classList.add('noscroll');
+}
+function closeClub(){ if($('clubPop').hidden) return; $('clubPop').hidden = true; if($('pv').hidden) document.body.classList.remove('noscroll'); }
+$('plBody').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-club]'); if(!tr) return;
+  const td = e.target.closest('td[data-grp]');
+  openClub(tr.dataset.club, td ? td.dataset.grp : 'ALL');
+});
+$('clubPop').addEventListener('click', e => {
+  if(e.target === $('clubPop') || e.target.closest('[data-cpclose]')) return closeClub();
+  const r = e.target.closest('tr[data-cpid]'); if(r) openPlayer(+r.dataset.cpid);
+});
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && $('pv').hidden) closeClub(); });
+
 /* ---------- Spielerprofil (Doppelklick / Doppeltipp) ---------- */
 const POS_DE = { GKP:'Torhüter', DEF:'Verteidiger', MID:'Mittelfeld', FWD:'Sturm' };
 const POS_PL = { GKP:'Torhütern', DEF:'Verteidigern', MID:'Mittelfeldspielern', FWD:'Stürmern' };
@@ -2052,7 +2093,7 @@ function openPlayer(id, push = true){
 }
 function closePlayer(fromPop){
   if($('pv').hidden) return;
-  $('pv').hidden = true; document.body.classList.remove('noscroll'); pvId = null;
+  $('pv').hidden = true; if($('clubPop').hidden) document.body.classList.remove('noscroll'); pvId = null;
   if(pvPushed){ pvPushed = false; if(!fromPop) history.back(); }
 }
 window.addEventListener('popstate', () => { if(!$('pv').hidden){ pvPushed = false; closePlayer(true); } });
@@ -2134,7 +2175,7 @@ $('cmpPill').addEventListener('click', () => $('cmpCard').scrollIntoView({ behav
 // Zeile antippen/anklicken markiert sie sofort (Spieler werden in allen Tabellen mitmarkiert); Doppeltipp öffnet das Profil
 let lastTap = {};
 document.addEventListener('click', e => {
-  if(e.target.closest('input,button,a,select,summary,label,#pv')) return;
+  if(e.target.closest('input,button,a,select,summary,label,#pv,#clubPop')) return;
   const tr = e.target.closest('tbody tr'); if(!tr || tr.querySelector('th')) return;
   const pid = tr.dataset.pid, owner = tr.dataset.owner;
   if(owner != null){
