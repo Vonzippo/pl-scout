@@ -79,7 +79,7 @@ export default async (req: Request, context?: any) => {
     return json(401, { error: "Falsches oder fehlendes Coach-Passwort." });
   }
 
-  let body: { messages?: { role: string; content: string }[]; news?: unknown; league?: string; me?: string; question?: string };
+  let body: { messages?: { role: string; content: string }[]; news?: unknown; league?: string; me?: string; question?: string; stream?: boolean };
   try { body = await req.json(); } catch { return json(400, { error: "Ungültige Anfrage." }); }
 
   const messages = (body.messages || [])
@@ -98,26 +98,91 @@ export default async (req: Request, context?: any) => {
   const q = secret ? await fetch(new URL("/api/ki/quota", req.url), { method: "POST", headers: { "content-type": "application/json", "x-ki-secret": secret }, body: JSON.stringify({ kind: "coach" }) }).then((r) => r.json()).catch(() => null) : null;
   if (!q?.ok) return json(429, { error: `Tageslimit des Coaches erreicht (${q?.limit ?? "?"} Fragen pro Tag) – morgen wieder verfügbar.` });
 
-  // Sleeper-Gesamtbild (Tabelle, alle Kader, FAAB, Transaktionen, Verletzungen, Sleeper-News, KI-Score)
-  const lid = /^\d{5,25}$/.test(String(body.league || "")) ? String(body.league) : "";
-  const meId = /^\d{3,25}$/.test(String(body.me || "")) ? String(body.me) : "";
-  const digestP = lid ? fetch(new URL(`/api/digest?league=${lid}${meId ? "&me=" + meId : ""}`, req.url), { signal: AbortSignal.timeout(14000) })
-    .then((r) => (r.ok ? r.text() : "")).catch(() => "") : Promise.resolve("");
-  // Gedächtnis aus früheren Gesprächen
-  const memK = lid ? `${lid}_${meId || "x"}` : "";
-  const memP = memK ? fetch(new URL(`/api/ki/memory?k=${memK}`, req.url), { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j) => j.notes || []).catch(() => []) : Promise.resolve([]);
-  const [news, digestRaw, notes] = await Promise.all([gatherNews(body.news), digestP, memP]);
-  const memBlock = notes.length ? `\n\nGEDÄCHTNIS (was du dir aus früheren Gesprächen mit dem Nutzer gemerkt hast – berücksichtige es, prüfe es aber gegen die aktuellen Daten):\n` +
-    notes.map((n: any) => `- ${new Date(n.ts).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })}: ${n.t}`).join("\n") : "";
-  const digest = digestRaw ? `\n\nSLEEPER-DATEN DER LIGA (live von Sleeper, soeben abgerufen – massgebend für Kader, Besitzer, FAAB, Trades, Waiver, Verletzungsstatus; «ICH» = der Nutzer):\n${digestRaw.slice(0, 15000)}` : "";
-  const newsBlock = news.length
-    ? `\n\nAKTUELLE SCHLAGZEILEN (Google News, letzte 7 Tage, neueste zuerst – vom System soeben abgerufen):\n` +
-      news.map((n) => `- [${n.player}] ${n.date}: ${n.title} (${n.source})`).join("\n") +
-      `\n\nWerte diese Schlagzeilen zuerst aus (Verletzungen, Sperren, Rotation, Transfers) und beziehe dich mit Datum darauf. Nutze die Websuche, um wichtige Meldungen im Detail zu lesen oder Lücken zu füllen.`
-    : "";
+  const gather = async () => {
+    // Sleeper-Gesamtbild (Tabelle, alle Kader, FAAB, Transaktionen, Verletzungen, Sleeper-News, KI-Score)
+    const lid = /^\d{5,25}$/.test(String(body.league || "")) ? String(body.league) : "";
+    const meId = /^\d{3,25}$/.test(String(body.me || "")) ? String(body.me) : "";
+    const digestP = lid ? fetch(new URL(`/api/digest?league=${lid}${meId ? "&me=" + meId : ""}`, req.url), { signal: AbortSignal.timeout(14000) })
+      .then((r) => (r.ok ? r.text() : "")).catch(() => "") : Promise.resolve("");
+    // Gedächtnis aus früheren Gesprächen
+    const memK = lid ? `${lid}_${meId || "x"}` : "";
+    const memP = memK ? fetch(new URL(`/api/ki/memory?k=${memK}`, req.url), { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j) => j.notes || []).catch(() => []) : Promise.resolve([]);
+    const [news, digestRaw, notes] = await Promise.all([gatherNews(body.news), digestP, memP]);
+    const memBlock = notes.length ? `\n\nGEDÄCHTNIS (was du dir aus früheren Gesprächen mit dem Nutzer gemerkt hast – berücksichtige es, prüfe es aber gegen die aktuellen Daten):\n` +
+      notes.map((n: any) => `- ${new Date(n.ts).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })}: ${n.t}`).join("\n") : "";
+    const digest = digestRaw ? `\n\nSLEEPER-DATEN DER LIGA (live von Sleeper, soeben abgerufen – massgebend für Kader, Besitzer, FAAB, Trades, Waiver, Verletzungsstatus; «ICH» = der Nutzer):\n${digestRaw.slice(0, 15000)}` : "";
+    const newsBlock = news.length
+      ? `\n\nAKTUELLE SCHLAGZEILEN (Google News, letzte 7 Tage, neueste zuerst – vom System soeben abgerufen):\n` +
+        news.map((n) => `- [${n.player}] ${n.date}: ${n.title} (${n.source})`).join("\n") +
+        `\n\nWerte diese Schlagzeilen zuerst aus (Verletzungen, Sperren, Rotation, Transfers) und beziehe dich mit Datum darauf. Nutze die Websuche, um wichtige Meldungen im Detail zu lesen oder Lücken zu füllen.`
+      : "";
+    return { news, notes, sys: systemPrompt(today, season) + memBlock + digest + newsBlock };
+  };
 
+  // Streaming (OpenRouter): Antwort erscheint laufend, kein 40-Sekunden-Limit der Edge Function
+  if (body.stream && orKey) {
+    const enc = new TextEncoder();
+    const orModelsS = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-sonnet-5.5,openai/gpt-5.6-luna,anthropic/claude-haiku-5.5").split(",").map((x) => x.trim()).filter(Boolean);
+    // 1) Hauptmodell recherchiert selbst (native Websuche), 2) günstigeres Modell ebenfalls mit Suche, 3) Rest ohne Suche
+    const planS: [string, boolean, number][] = orModelsS.map((m, i): [string, boolean, number] => [m, i < 2, i === 0 ? 4000 : 1500]);
+    const stream = new ReadableStream({
+      async start(ctrl) {
+        const send = (o: unknown) => { try { ctrl.enqueue(enc.encode(JSON.stringify(o) + "\n")); } catch { /* Client weg */ } };
+        let errs: string[] = [];
+        try {
+          send({ t: "status", c: "Lade Liga-Daten, News und Gedächtnis …" });
+          const { sys, news, notes } = await gather();
+          const newsOut = news.map(({ player, title, source, date, url }) => ({ player, title, source, date, url }));
+          for (const [m, search, think] of planS) {
+            send({ t: "status", c: search ? "Claude sucht im Web und denkt nach …" : "Claude denkt nach …" });
+            const note = search ? `\n\nDu hast eine eigene Websuche. Recherchiere selbständig, wenn es um aktuelle Infos geht (Verletzungen, Pressekonferenzen, voraussichtliche Aufstellungen, Transfers, Formkrisen): suche gezielt mit Spielername + Monat/Saison ${season}, mehrere Suchen sind erlaubt. Nenne Quelle und Datum. Für Kader, FAAB, Scores und Prognosen gelten die Live-Daten oben.` : "\n\n(Hinweis: Websuche ist gerade nicht verfügbar – stütze dich auf die Live-Daten, Sleeper-News und Schlagzeilen oben.)";
+            let r: Response;
+            try {
+              r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST", signal: AbortSignal.timeout(120000),
+                headers: { "content-type": "application/json", authorization: `Bearer ${orKey}`, "HTTP-Referer": "https://pl-scout-oetterli.netlify.app", "X-Title": "PL Scout" },
+                body: JSON.stringify({ model: m, stream: true, messages: [{ role: "system", content: sys + note }, ...messages], max_tokens: 8000,
+                  reasoning: { max_tokens: think, exclude: true },
+                  ...(search ? { plugins: [{ id: "web", engine: "native", max_results: 5 }], web_search_options: { search_context_size: "medium" } } : {}),
+                  usage: { include: true } }),
+              });
+            } catch (e) { errs.push(`${m}: Verbindung/Zeit`); continue; }
+            if (!r.ok || !r.body) { const tx = await r.text().catch(() => ""); errs.push(`${m}: ${r.status} ${tx.slice(0, 140)}`); continue; }
+            const reader = r.body.getReader(), dec = new TextDecoder();
+            let buf = "", got = false, cost = 0, err = "";
+            const sources: { url: string; title?: string }[] = [];
+            for (;;) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buf += dec.decode(value, { stream: true });
+              let i;
+              while ((i = buf.indexOf("\n")) >= 0) {
+                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                if (!line.startsWith("data:")) continue;
+                const data = line.slice(5).trim();
+                if (data === "[DONE]") continue;
+                let j: any; try { j = JSON.parse(data); } catch { continue; }
+                if (j.error) { err = j.error.message || "Fehler"; continue; }
+                const ch = j.choices?.[0];
+                const c = ch?.delta?.content;
+                if (c) { got = true; send({ t: "d", c }); }
+                for (const an of ch?.delta?.annotations || ch?.message?.annotations || []) { const u = an?.url_citation; if (u?.url && !sources.some((x) => x.url === u.url) && sources.length < 8) sources.push({ url: u.url, title: u.title }); }
+                if (j.usage?.cost != null) cost = Number(j.usage.cost) || 0;
+              }
+            }
+            if (got) { send({ t: "done", model: m + (search ? " + Websuche" : ""), cost, sources, news: newsOut, memory: notes.length }); ctrl.close(); return; }
+            errs.push(`${m}: ${err || "leere Antwort"}`);
+          }
+          send({ t: "error", error: "Der Coach konnte gerade keine Antwort erzeugen. Bitte nochmals senden.", detail: errs.join(" · ") });
+        } catch (e) { send({ t: "error", error: "Fehler im Coach: " + String((e as any)?.message || e).slice(0, 160), detail: errs.join(" · ") }); }
+        ctrl.close();
+      },
+    });
+    return new Response(stream, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" } });
+  }
+
+  const { news, notes, sys } = await gather();
   const t0 = Date.now();
-  const sys = systemPrompt(today, season) + memBlock + digest + newsBlock;
   // OpenRouter: Websuche über das «web»-Plugin (ein paar aktuelle Treffer), begrenztes Nachdenken, damit die Antwort sicher Platz hat
   const orCall = (model: string, msgs: any[], maxTokens: number, think: number, search: boolean, ms: number) => fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -127,7 +192,7 @@ export default async (req: Request, context?: any) => {
       ...(search ? { plugins: [{ id: "web", max_results: 4, search_prompt: `Aktuelle Web-Ergebnisse (heute ${today}, Saison ${season}). Nutze sie für News, Verletzungen und Aufstellungen und nenne die Quelle mit Datum:` }] } : {}),
       usage: { include: true } }),
   });
-  const orModels = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-haiku-5.5,deepseek/deepseek-v4.1-flash").split(",").map((x) => x.trim()).filter(Boolean);
+  const orModels = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-sonnet-5.5,openai/gpt-5.6-luna,anthropic/claude-haiku-5.5").split(",").map((x) => x.trim()).filter(Boolean);
   const orPlan: [string, boolean, number][] = [[orModels[0], true, 2048], [orModels[0], false, 1024], ...orModels.slice(1).map((m): [string, boolean, number] => [m, false, 1024])];
   let orAnswer = "", orModel = "", orCost = 0, orErr = "", orSources: { url: string; title?: string }[] = [], orSearched = false;
   if (orKey) {

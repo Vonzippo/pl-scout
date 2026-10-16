@@ -185,6 +185,8 @@ td.muted{color:var(--muted)}
 .memrow{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .memrow small{color:var(--muted)}
 .memrow button{padding:2px 8px;font-size:12px}
+.msg .cursor{display:inline-block;animation:blink 1s steps(2) infinite;color:var(--accent)}
+@keyframes blink{50%{opacity:0}}
 .aimeta{margin-top:8px;font-size:11px;color:var(--muted)}
 .databar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-6px 0 12px}
 .databar button{font-size:12px;padding:4px 10px}
@@ -1805,13 +1807,13 @@ function renderChat(){
   const log = $('chatlog');
   log.innerHTML = chat.map(m => {
     if(m.role === 'user') return `<div class="msg user">${esc(m.shown || m.content)}</div>`;
-    if(m.pending) return `<div class="msg ai"><span class="dots">Liest aktuelle News, analysiert Daten</span></div>`;
+    if(m.pending) return `<div class="msg ai"><span class="dots">${esc(m.status || 'Liest aktuelle News, analysiert Daten')}</span></div>`;
     const act = m.queries && m.queries.length ? `<div class="activity">${m.queries.map(q=>`<span>🔎 ${esc(q)}</span>`).join('')}</div>` : '';
     const src = m.sources && m.sources.length ? `<div class="sources">Quellen: ${m.sources.map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`).join('')}</div>` : '';
     const nws = m.news && m.news.length ? `<details class="sources"><summary style="cursor:pointer">📰 ${m.news.length} aktuelle Schlagzeilen gelesen</summary><ul style="margin:6px 0;padding-left:18px">${m.news.map(n=>`<li>${esc(n.date)} · <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span>(${esc(n.source)})</span></li>`).join('')}</ul></details>` : '';
     const alt = '';
     const meta = !m.error && m.model ? `<div class="aimeta">${esc(m.model.split('/').pop())}${m.cost ? ' · ' + (m.cost * 100).toFixed(2) + ' Cent' : ''}</div>` : '';
-    return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content)}${alt}${nws}${src}${meta}</div>`;
+    return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content) + (m.streaming ? '<span class="cursor">▍</span>' : '')}${alt}${nws}${src}${meta}</div>`;
   }).join('');
   log.lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
@@ -1837,6 +1839,30 @@ function newsNames(question){
   }
   return [...new Set(names)].slice(0, 20);
 }
+// Laufende Coach-Antwort (Zeile für Zeile JSON: status / d = Text / done / error)
+async function readCoachStream(res, ai, question){
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = '', raf = 0;
+  const paint = () => { if(raf) return; raf = requestAnimationFrame(() => { raf = 0; renderChat(); }); };
+  for(;;){
+    const { value, done } = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while((i = buf.indexOf('\n')) >= 0){
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if(!line) continue;
+      let j; try { j = JSON.parse(line); } catch(e){ continue; }
+      if(j.t === 'status'){ ai.status = j.c; paint(); }
+      else if(j.t === 'd'){ ai.pending = false; ai.streaming = true; ai.content += j.c; paint(); }
+      else if(j.t === 'done'){ ai.streaming = false; ai.model = j.model || ''; ai.cost = j.cost; ai.sources = j.sources || []; ai.news = j.news || []; ai.queries = /Websuche/.test(j.model||'') ? ['Websuche (aktuelle Treffer)'] : []; }
+      else if(j.t === 'error'){ throw new Error(j.error + (j.detail ? '\n\n(' + j.detail + ')' : '')); }
+    }
+  }
+  ai.streaming = false;
+  if(!ai.content) throw new Error('Keine Antwort erhalten – bitte nochmals senden.');
+  fetch('/api/ki/remember', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ k: memKey(), question, answer: ai.content }) }).then(() => loadMemory()).catch(() => {});
+}
 async function askCoach(){
   const question = $('chatIn').value.trim();
   if(!question || chatBusy || !players.length) return;
@@ -1849,7 +1875,8 @@ async function askCoach(){
     const history = chat.filter(m => m !== ai && !m.error && !m.pending);
     // nur die letzte Nutzerfrage mit vollem Datenblock schicken, ältere gekürzt
     const msgs = history.map((m,i) => ({ role:m.role, content: (m.role==='user' && i < history.length-1) ? (m.shown||m.content) : m.content }));
-    const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs, news: newsNames(question), league: sleeper.leagueId || '', me: sleeper.me || '', question }) });
+    const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs, news: newsNames(question), league: sleeper.leagueId || '', me: sleeper.me || '', question, stream: true }) });
+    if((res.headers.get('content-type') || '').includes('ndjson') && res.body){ await readCoachStream(res, ai, question); return; }
     let j = null; try { j = await res.json(); } catch(e){}
     if(res.status === 401){ $('coachKey').classList.add('need'); $('coachKey').focus(); throw new Error('Bitte unten einmal das Coach-Passwort eingeben und nochmals «Coach fragen» klicken. Die Seite merkt es sich danach.'); }
     if(!res.ok || !j) throw new Error(((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status)) + (j && j.detail ? '\n\n(' + j.detail + ')' : ''));
