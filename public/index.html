@@ -2153,6 +2153,7 @@ function closePlayer(fromPop){
 }
 window.addEventListener('popstate', () => { if(!$('pv').hidden){ pvPushed = false; closePlayer(true); } });
 window.plOpenPlayer = openPlayer;
+window.plExport = () => players.map(p => ({ id:p.id, sid:(sleeper.sidByFpl||{})[p.id]||'', name:p.full, web:p.name, pos:p.pos, club:teams[p.teamId]?.short, score:p.score, base:p.scoreBase, prog:p.prog, xfp:p.xfp, l10:p.l10, pts90:p.pts90, min:p.minutes, past:p.pastScore, comp:p.comp, owner:ownerOf(p)||'', status:p.status, xMin:p.xMin }));
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closePlayer(); });
 $('pv').addEventListener('click', e => {
   if(e.target === $('pv') || e.target.closest('[data-pvclose]')) return closePlayer();
