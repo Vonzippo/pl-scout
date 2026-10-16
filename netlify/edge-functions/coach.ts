@@ -186,7 +186,7 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} (leere Listen, wenn nicht
   // 4) kleineres Modell. Bei Tageslimit direkt aufs kleinere Modell (eigenes Kontingent).
   const big = Netlify.env.get("COACH_MODEL") || "openai/gpt-oss-120b", small = "openai/gpt-oss-20b";
   // weitere Modelle mit eigenem Tageskontingent als letzte Ausweichstufe
-  const plan: [string, boolean, string][] = [[big, true, "medium"], [big, true, "low"], [big, false, "medium"], [small, false, "medium"], ["llama-3.3-70b-versatile", false, ""], ["qwen/qwen3-32b", false, ""]];
+  const plan: [string, boolean, string][] = [[big, true, "medium"], [big, true, "low"], [big, false, "medium"], [small, false, "medium"], ["llama-3.3-70b-versatile", false, ""]];
   let res: Response | null = null, data: any = null, usedModel = big, lastErr = "";
   for (let i = 0; i < plan.length; i++) {
     let [m, search, effort] = plan[i];
