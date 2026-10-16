@@ -1744,7 +1744,7 @@ function rosterCard(r){
 }
 
 /* ---------- KI-Coach (über Claude-Chat) ---------- */
-const MAX_PROMPT = 12000;
+const MAX_PROMPT = 15500;
 const DEFAULT_LEAGUE = '1393632953241735168';
 function line(p){
   const nx = (p.next||[]).slice(0,4).map(f => `${teams[f.opp]?.short||'?'}(${f.home?'H':'A'}${f.d})`).join(' ');
@@ -1753,7 +1753,8 @@ function line(p){
   const ki = kiOf(p);
   return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
-    ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}`;
+    ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}` +
+    ((p.progParts||[]).length ? ' | PRO SPIEL: ' + p.progParts.slice(0,2).map(x => `GW${x.gw} ${x.home?'vs':'@'} ${teams[x.opp]?.short||'?'} ${fmt(x.pts,1)} Pkt (Team-Tore ${fmt(x.tore,1)}, Gegentore ${fmt(x.gegentore,1)}, Zu-Null ${Math.round(x.cs*100)}%)`).join('; ') : '');
 }
 function buildPrompt(question){
   const out = [];
@@ -1764,8 +1765,17 @@ function buildPrompt(question){
   out.push(`\nMEINE DATEN (Saisonstats aus der offiziellen FPL-API; nächster Spieltag GW ${nextGw}; Progn. = erwartete Punkte nach meinen Regeln in den nächsten ${state.horizon} Runden; Gegner(H/A + Schwierigkeit 1 leicht – 5 schwer); T=Tore, A=Assists, ZN=Zu-Null)`);
   out.push(`Punkteregeln: ${rules}`);
   if(sleeper.leagueId) out.push(`ALLE SLEEPER-DATEN (Tabelle, alle Kader, FAAB, Trades/Waiver, Verletzungen, News): ${location.origin}/api/digest?league=${sleeper.leagueId}${sleeper.me ? '&me='+sleeper.me : ''}&full=1 – bei Bedarf abrufen.`);
-  out.push(`SCORE = Spielerqualität 0–100 unabhängig vom Spielplan: Rechnung aus Zahlen, von der KI mit News/Fitness/Rolle verfeinert («KI ±x»). Bausteine je 0–100 im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). PROGNOSE = erwartete Punkte pro Spiel der nächsten 4 Spiele, gewichtet 40/30/20/10 %. Ø L10/L3 = echte Punkte pro Spiel (Liga-Wertung) der letzten 10/3 Spiele; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
+  out.push(`SCORE = Spielerqualität 0–100 unabhängig vom Spielplan und von Verletzungen (Gegner und Verfügbarkeit stecken in PROGNOSE und PRO SPIEL): Rechnung aus Zahlen, von der KI leicht verfeinert («KI ±x»). Bausteine je 0–100 im Vergleich zur Position; Gewichtung: ${Object.keys(SCORE_SHORT).map(k=>SCORE_SHORT[k]+' '+scoreW[k]+'%').join(', ')}). PROGNOSE = erwartete Punkte pro Spiel der nächsten 4 Spiele, gewichtet 40/30/20/10 %. Ø L10/L3 = echte Punkte pro Spiel (Liga-Wertung) der letzten 10/3 Spiele; Min L5 = Minuten-Schnitt letzte 5 Spiele.`);
   const blocks = [];
+  { const tm = teamModel.tm || {}, avg = teamModel.avg || 1.3;
+    const rows = Object.keys(tm).filter(id => teams[id]).map(id => ({ id, att: tm[id].att, def: tm[id].def }));
+    const ra = [...rows].sort((a,b)=>b.att-a.att).map(x=>x.id), rd = [...rows].sort((a,b)=>a.def-b.def).map(x=>x.id);
+    const gw = (allFixtures || []).filter(f => f.event === nextGw).map(f => `${teams[f.team_h]?.short}-${teams[f.team_a]?.short}`).join(', ');
+    if(rows.length) out.push(`\nGEGNERSTÄRKE (Teammodell aus xG; Angriff = erwartete Tore/Spiel, Abwehr = erwartete Gegentore/Spiel, Rang 1 = am stärksten; Ligaschnitt ${fmt(avg,2)}):\n` +
+      ra.map(id => `${teams[id].short}: Angriff ${fmt(tm[id].att,2)} (Rang ${ra.indexOf(id)+1}), Abwehr ${fmt(tm[id].def,2)} (Rang ${rd.indexOf(id)+1})`).join(' · ') +
+      (gw ? `\nSPIELE GW ${nextGw}: ${gw}` : '') +
+      `\nBerücksichtige bei Aufstellungs- und Waiver-Fragen immer den Gegner dieses Spieltags: Verteidiger/Torhüter gegen schwache Angriffe (Zu-Null-Chance), Offensive gegen schwache Abwehren. «PRO SPIEL» zeigt meine Prognose pro Partie inkl. Gegnerstärke.`);
+  }
   if(sleeper.rosters.length){
     const mine = sleeper.rosters.find(r => r.owner === sleeper.me);
     if(mine){
