@@ -158,6 +158,9 @@ td.muted{color:var(--muted)}
 .collist button{padding:2px 8px;margin-left:4px}
 #cmpPill{position:fixed;right:16px;bottom:16px;z-index:20;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
 .fold{margin:0 0 10px}
+.hfold{margin:0}
+.hfold>summary{font-size:13px;justify-content:flex-end}
+.hfold>.league{margin-top:6px}
 .fold>summary{cursor:pointer;list-style:none;font-size:12px;color:var(--muted);padding:4px 0;user-select:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .fold>summary::-webkit-details-marker{display:none}
 .fold>summary::before{content:'▸';display:inline-block;transition:transform .15s;color:var(--accent2)}
@@ -288,11 +291,13 @@ body.noscroll{overflow:hidden}
 <body>
 <header>
   <div class="brand"><div class="logo">PL</div><div><h1>PL Scout</h1><small id="gwinfo">Premier League · Spieler-Vergleich für Sleeper</small></div></div>
+  <details class="fold hfold" id="foldLeague"><summary>⚙️ <span id="leagueMini">Liga wählen</span></summary>
   <div class="league">
     <input id="leagueId" placeholder="Sleeper League-ID" size="22" inputmode="numeric">
     <select id="meSel" title="Wer bist du in der Liga?"><option value="">– ich bin … –</option></select>
     <button class="primary" id="loadLeague">Liga laden</button>
   </div>
+  </details>
 </header>
 <main>
   <details class="fold" id="foldTop"><summary>ℹ️ Liga & Daten <span id="infoMini" class="mini"></span></summary>
@@ -1167,6 +1172,7 @@ function renderDataStatus(){
   const unm = (sleeper.unmatched || []).length;
   const gw = gwState ? (gwState.checked ? `GW ${gwState.id} ausgewertet` : `GW ${gwState.id} läuft – Punkte live`) : '';
   const okAll = !problems && !unm;
+  if($('leagueMini')) $('leagueMini').textContent = sleeper.leagueName ? `${sleeper.leagueName}${sleeper.me && sleeper.users[sleeper.me] ? ' · ' + sleeper.users[sleeper.me] : ''}` : 'Liga wählen';
   if($('infoMini')) $('infoMini').textContent = `· ${(!problems && !(sleeper.unmatched||[]).length) ? '✅' : '⚠️'} Stand ${hhmm(lastRefresh)}${gw ? ' · '+gw : ''}`;
   $('dataSummary').innerHTML = `${refreshing ? '⏳ aktualisiere …' : (okAll ? '✅' : '⚠️')} Daten-Stand <b>${hhmm(lastRefresh)}</b>${gw ? ' · '+gw : ''}${problems ? ` · <span style="color:var(--warn)">${problems} Quelle(n) mit Problem</span>` : ''}${unm ? ` · <span style="color:var(--warn)">${unm} Spieler nicht zugeordnet</span>` : ''}`;
   $('dataPanel').innerHTML = `<table class="mdt"><tbody><tr><th>Quelle</th><th>Stand</th><th>Status</th></tr>${src.map(([k,l]) => {
@@ -1328,7 +1334,7 @@ async function loadSleeper(leagueId){
     return (matchCache[pid] = ok ? best.id : null);
   };
   sleeper.matchPid = matchPid;
-  sleeper.leagueId = leagueId; sleeper.scoringSettings = league.scoring_settings || null; sleeper.calibrated = false;
+  sleeper.leagueId = leagueId; sleeper.leagueName = league.name || ''; sleeper.scoringSettings = league.scoring_settings || null; sleeper.calibrated = false;
   let matched = 0, total = 0;
   sleeper.unmatched = [];
   for(const [pid, owner] of Object.entries(ownerBySleeper)){
@@ -2263,7 +2269,8 @@ $('lgBody').addEventListener('click', e => {
 { const v = store.get('view'); if(v === 'teams' || v === 'coach') $('tabs').querySelector(`[data-tab=${v}]`).click(); }
 $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeague(); });
 
-for(const id of ['foldTop','foldKi','foldFilter','foldMem']){ const d = $(id); if(!d) continue; d.open = !!store.get(id); d.addEventListener('toggle', () => store.set(id, d.open)); }
+if(!store.get('league') && !new URLSearchParams(location.search).get('league')) store.set('foldLeague', true); // erste Nutzung: Liga-Eingabe offen
+for(const id of ['foldTop','foldKi','foldFilter','foldMem','foldLeague']){ const d = $(id); if(!d) continue; d.open = !!store.get(id); d.addEventListener('toggle', () => store.set(id, d.open)); }
 /* ---------- Start ---------- */
 (async () => {
   renderScoring(); renderScoreWeights();
