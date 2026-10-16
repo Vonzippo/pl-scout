@@ -331,15 +331,7 @@ body.noscroll{overflow:hidden}
         <button class="ghost" id="chatClear">Chat leeren</button>
         <input id="coachKey" type="hidden">
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <span class="empty">Alternativ in Claude:</span>
-        <button class="ghost" id="openWeb">In Claude öffnen</button>
-        <button class="ghost" id="openApp">In Claude-App öffnen</button>
-        <button class="ghost" id="copyPrompt">Prompt kopieren</button>
-        <span class="empty" id="coachMsg"></span>
-      </div>
-      <details><summary class="empty" style="cursor:pointer">Vorschau des Prompts</summary><pre class="raw" id="promptPreview" style="max-height:320px;white-space:pre-wrap"></pre></details>
-      <div class="empty">Der Coach nutzt das Modell gpt-oss-120b über Groq inkl. Websuche. Antworten dauern meist 5–30 Sekunden.</div>
+      <div hidden><button id="openWeb"></button><button id="openApp"></button><button id="copyPrompt"></button><span id="coachMsg"></span><pre id="promptPreview"></pre></div>
     </div>
   </section>
 
@@ -1749,7 +1741,7 @@ function renderChat(){
     const act = m.queries && m.queries.length ? `<div class="activity">${m.queries.map(q=>`<span>🔎 ${esc(q)}</span>`).join('')}</div>` : '';
     const src = m.sources && m.sources.length ? `<div class="sources">Quellen: ${m.sources.map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`).join('')}</div>` : '';
     const nws = m.news && m.news.length ? `<details class="sources"><summary style="cursor:pointer">📰 ${m.news.length} aktuelle Schlagzeilen gelesen</summary><ul style="margin:6px 0;padding-left:18px">${m.news.map(n=>`<li>${esc(n.date)} · <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span>(${esc(n.source)})</span></li>`).join('')}</ul></details>` : '';
-    const alt = m.error && m.q ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="primary" data-claudeq="${esc(m.q)}">✳️ Mit Claude beantworten (dein Abo, ohne API)</button><button class="ghost" data-claudeapp="${esc(m.q)}">In Claude-App</button></div>` : '';
+    const alt = '';
     const meta = !m.error && m.model ? `<div class="aimeta">${esc(m.model.split('/').pop())}${m.cost ? ' · ' + (m.cost * 100).toFixed(2) + ' Cent' : ''}</div>` : '';
     return `<div class="msg ai ${m.error?'err':''}">${act}${m.error ? esc(m.error) : md(m.content)}${alt}${nws}${src}${meta}</div>`;
   }).join('');
