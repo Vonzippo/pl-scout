@@ -67,18 +67,19 @@ async function gatherNews(names: unknown): Promise<NewsItem[]> {
   return all.filter((n) => { const k = n.title.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
-export default async (req: Request) => {
+export default async (req: Request, context?: any) => {
   if (req.method !== "POST") return json(405, { error: "Nur POST erlaubt." });
 
-  const apiKey = Netlify.env.get("GROQ_API_KEY");
-  if (!apiKey) return json(500, { error: "GROQ_API_KEY ist in Netlify nicht gesetzt." });
+  const apiKey = Netlify.env.get("GROQ_API_KEY") || "";
+  const orKey = Netlify.env.get("OPENROUTER_API_KEY") || "";
+  if (!apiKey && !orKey) return json(500, { error: "Weder OPENROUTER_API_KEY noch GROQ_API_KEY ist in Netlify gesetzt." });
 
   const pw = Netlify.env.get("COACH_PASSWORD");
   if (pw && !safeEqual(req.headers.get("x-coach-key") || "", pw)) {
     return json(401, { error: "Falsches oder fehlendes Coach-Passwort." });
   }
 
-  let body: { messages?: { role: string; content: string }[]; news?: unknown; league?: string; me?: string };
+  let body: { messages?: { role: string; content: string }[]; news?: unknown; league?: string; me?: string; question?: string };
   try { body = await req.json(); } catch { return json(400, { error: "Ungültige Anfrage." }); }
 
   const messages = (body.messages || [])
@@ -102,7 +103,12 @@ export default async (req: Request) => {
   const meId = /^\d{3,25}$/.test(String(body.me || "")) ? String(body.me) : "";
   const digestP = lid ? fetch(new URL(`/api/digest?league=${lid}${meId ? "&me=" + meId : ""}`, req.url), { signal: AbortSignal.timeout(14000) })
     .then((r) => (r.ok ? r.text() : "")).catch(() => "") : Promise.resolve("");
-  const [news, digestRaw] = await Promise.all([gatherNews(body.news), digestP]);
+  // Gedächtnis aus früheren Gesprächen
+  const memK = lid ? `${lid}_${meId || "x"}` : "";
+  const memP = memK ? fetch(new URL(`/api/ki/memory?k=${memK}`, req.url), { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j) => j.notes || []).catch(() => []) : Promise.resolve([]);
+  const [news, digestRaw, notes] = await Promise.all([gatherNews(body.news), digestP, memP]);
+  const memBlock = notes.length ? `\n\nGEDÄCHTNIS (was du dir aus früheren Gesprächen mit dem Nutzer gemerkt hast – berücksichtige es, prüfe es aber gegen die aktuellen Daten):\n` +
+    notes.map((n: any) => `- ${new Date(n.ts).toLocaleDateString("de-CH", { timeZone: "Europe/Zurich", day: "numeric", month: "short" })}: ${n.t}`).join("\n") : "";
   const digest = digestRaw ? `\n\nSLEEPER-DATEN DER LIGA (live von Sleeper, soeben abgerufen – massgebend für Kader, Besitzer, FAAB, Trades, Waiver, Verletzungsstatus; «ICH» = der Nutzer):\n${digestRaw.slice(0, 15000)}` : "";
   const newsBlock = news.length
     ? `\n\nAKTUELLE SCHLAGZEILEN (Google News, letzte 7 Tage, neueste zuerst – vom System soeben abgerufen):\n` +
@@ -111,13 +117,64 @@ export default async (req: Request) => {
     : "";
 
   const t0 = Date.now();
+  const sys = systemPrompt(today, season) + memBlock + digest + newsBlock;
+  const orCall = (model: string, msgs: any[], maxTokens: number, effort: string | null, ms: number) => fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${orKey}`, "HTTP-Referer": "https://pl-scout-oetterli.netlify.app", "X-Title": "PL Scout" },
+    signal: AbortSignal.timeout(ms),
+    body: JSON.stringify({ model, messages: msgs, max_tokens: maxTokens, ...(effort ? { reasoning: { effort, exclude: true } } : {}), usage: { include: true } }),
+  });
+  const orModels = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-haiku-5.5,deepseek/deepseek-v4.1-flash").split(",").map((x) => x.trim()).filter(Boolean);
+  let orAnswer = "", orModel = "", orCost = 0, orErr = "";
+  if (orKey) {
+    for (const m of orModels) {
+      if (Date.now() - t0 > 22000) break;
+      try {
+        const r = await orCall(m, [{ role: "system", content: sys + "\n\n(Hinweis: Eine eigene Websuche ist hier nicht verfügbar – stütze dich auf die Live-Daten, Sleeper-News und Schlagzeilen oben und sage, wenn etwas unklar ist.)" }, ...messages], 6000, "medium", Math.max(6000, 32000 - (Date.now() - t0)));
+        const d: any = await r.json().catch(() => null);
+        const c = d?.choices?.[0]?.message?.content;
+        if (r.ok && c) { orAnswer = String(c); orModel = m; orCost = Number(d?.usage?.cost) || 0; break; }
+        orErr = `${r.status} ${d?.error?.message || ""}`;
+      } catch (e) { orErr = "timeout"; }
+    }
+  }
+  // Gedächtnis nachführen: dauerhafte Fakten aus Frage + Antwort festhalten (läuft nach der Antwort weiter)
+  const remember = async (answer: string) => {
+    if (!orKey || !memK || !secret) return;
+    const question = String(body.question || messages[messages.length - 1].content).slice(0, 1500);
+    const prompt = `Du pflegst das Langzeitgedächtnis eines Fantasy-Fussball-Coaches für einen Nutzer (Sleeper-Liga, Premier League).
+Bisherige Notizen (id: text):\n${notes.map((n: any) => `${n.id}: ${n.t}`).join("\n") || "(keine)"}
+
+Neue Frage des Nutzers: ${question}
+Antwort des Coaches (gekürzt): ${answer.slice(0, 2500)}
+
+Halte NUR fest, was in späteren Gesprächen nützlich bleibt: Vorlieben und Ziele des Nutzers, getroffene oder geplante Entscheide (Trades, Waiver, Aufstellung), Abmachungen, was er von Ratschlägen hält, wichtige Empfehlungen des Coaches mit Datum. Keine Tagesdaten, die sich ohnehin aus den Live-Daten ergeben (Punkte, Scores). Kurze deutsche Sätze. Entferne Notizen, die überholt sind oder der neuen Info widersprechen.
+Antworte nur mit JSON: {"add":["..."],"remove":["id"]} (leere Listen, wenn nichts zu tun ist).`;
+    try {
+      const r = await orCall(orModels[orModels.length - 1], [{ role: "user", content: prompt }], 600, null, 15000);
+      const d: any = await r.json().catch(() => null);
+      const m = String(d?.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
+      if (!m) return;
+      const j = JSON.parse(m[0]);
+      if ((j.add || []).length || (j.remove || []).length)
+        await fetch(new URL(`/api/ki/memory?k=${memK}`, req.url), { method: "POST", headers: { "content-type": "application/json", "x-ki-secret": secret }, body: JSON.stringify({ add: j.add || [], remove: j.remove || [] }) });
+    } catch { /* Gedächtnis ist Zusatz */ }
+  };
+  if (orAnswer) {
+    const answer = orAnswer.replace(/【[^】]*】/g, "").trim();
+    const job = remember(answer);
+    if (context?.waitUntil) context.waitUntil(job); else await job;
+    return json(200, { answer, sources: [], queries: [], news: news.map(({ player, title, source, date, url }) => ({ player, title, source, date, url })),
+      model: orModel, cost: orCost, memory: notes.length });
+  }
+  if (!apiKey) return json(502, { error: `OpenRouter-Fehler (${orErr || "keine Antwort"}). Bitte nochmals versuchen.` });
   const call = (model: string, withSearch: boolean, effort: string) => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(Math.max(5000, 37000 - (Date.now() - t0))),
     body: JSON.stringify({
       model,
-      messages: [{ role: "system", content: systemPrompt(today, season) + digest + newsBlock + (withSearch ? "" :
+      messages: [{ role: "system", content: sys + (withSearch ? "" :
         "\n\n(Websuche ist gerade nicht verfügbar – stütze dich auf die Schlagzeilen und Daten oben.)") }, ...messages],
       ...(withSearch ? { tools: [{ type: "browser_search" }], tool_choice: "auto" } : {}),
       ...(model.startsWith("openai/") ? { reasoning_effort: effort } : {}),

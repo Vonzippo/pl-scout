@@ -1,6 +1,6 @@
 // API für KI-Bewertungen: lesen, Beobachtungsliste setzen, fällige Spieler, Ergebnisse speichern
 import type { Config } from "@netlify/functions";
-import { loadRatings, saveWatch, dueList, mergeRatings, noteError, takeQuota } from "../lib/kistore.ts";
+import { loadRatings, saveWatch, dueList, mergeRatings, noteError, takeQuota, loadMemory, updateMemory } from "../lib/kistore.ts";
 
 const json = (status: number, body: unknown, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...extra } });
@@ -45,7 +45,23 @@ export default async (req: Request) => {
     return json(200, await takeQuota(String(body?.kind || "")));
   }
 
+  // Gedächtnis: lesen (Seite + Coach), Notiz löschen (Seite), Notizen ändern (nur Coach mit Geheimnis)
+  if (path.endsWith("/memory")) {
+    const k = String(url.searchParams.get("k") || "");
+    if (!/^[0-9a-z_-]{3,60}$/i.test(k)) return json(400, { error: "ungültig" });
+    if (req.method === "GET") return json(200, { notes: await loadMemory(k) }, { "cache-control": "no-store" });
+    const body: any = await req.json().catch(() => ({}));
+    if (req.method === "DELETE") return json(200, { notes: await updateMemory(k, [], [String(body?.id || "")]) });
+    if (req.method === "POST") {
+      const secret = Netlify.env.get("KI_SECRET");
+      if (!secret || req.headers.get("x-ki-secret") !== secret) return json(401, { error: "nicht erlaubt" });
+      const add = (Array.isArray(body?.add) ? body.add : []).map(String).slice(0, 8);
+      const remove = (Array.isArray(body?.remove) ? body.remove : []).map(String).slice(0, 20);
+      return json(200, { notes: await updateMemory(k, add, remove) });
+    }
+  }
+
   return json(404, { error: "unbekannt" });
 };
 
-export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota"] };
+export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota", "/api/ki/memory"] };

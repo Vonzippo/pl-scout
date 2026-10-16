@@ -52,3 +52,21 @@ export async function takeQuota(kind: string): Promise<{ ok: boolean; used: numb
   await s.setJSON(key, q);
   return { ok: true, used: used + 1, limit };
 }
+
+// Gedächtnis des Coaches pro Liga + Nutzer: dauerhafte Notizen (Vorlieben, Entscheide, Trades, Pläne)
+export type Note = { id: string; t: string; ts: number };
+const memKey = (k: string) => "memory-" + k.replace(/[^0-9a-z_-]/gi, "").slice(0, 60);
+export async function loadMemory(k: string): Promise<Note[]> {
+  return (((await store().get(memKey(k), { type: "json" })) as any)?.notes) || [];
+}
+export async function updateMemory(k: string, add: string[], remove: string[]): Promise<Note[]> {
+  const notes = (await loadMemory(k)).filter((n) => !remove.includes(n.id));
+  const now = Date.now();
+  for (const t of add) {
+    const x = String(t || "").trim().slice(0, 240);
+    if (x && !notes.some((n) => n.t.toLowerCase() === x.toLowerCase())) notes.push({ id: now.toString(36) + Math.random().toString(36).slice(2, 6), t: x, ts: now });
+  }
+  const keep = notes.slice(-60);
+  await store().setJSON(memKey(k), { notes: keep });
+  return keep;
+}
