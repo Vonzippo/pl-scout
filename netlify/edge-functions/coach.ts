@@ -202,7 +202,8 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} (leere Listen, wenn nicht
     const is429 = lastErr.startsWith("429");
     return json(is429 ? 429 : 502, { error: is429
       ? `Groq-Limit erreicht (${/per day|TPD|RPD/.test(lastErr) ? "Tageskontingent aufgebraucht – morgen wieder verfügbar, oder «In Claude öffnen» nutzen" : "bitte 1 Minute warten"}).`
-      : "Der Coach konnte gerade keine Antwort erzeugen (mehrere Versuche). Bitte nochmals senden oder «In Claude öffnen» nutzen." });
+      : "Der Coach konnte gerade keine Antwort erzeugen (mehrere Versuche). Bitte nochmals senden oder «In Claude öffnen» nutzen.",
+      detail: `OpenRouter: ${orKey ? (orErr || "kein Ergebnis") : "nicht eingerichtet (OPENROUTER_API_KEY fehlt)"} · Groq: ${lastErr.slice(0, 160)}` });
   }
 
   const msg = data?.choices?.[0]?.message || {};

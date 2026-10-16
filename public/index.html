@@ -1740,7 +1740,7 @@ async function askCoach(){
     const res = await fetch('/api/coach', { method:'POST', headers:{ 'content-type':'application/json', 'x-coach-key': $('coachKey').value }, body: JSON.stringify({ messages: msgs, news: newsNames(question), league: sleeper.leagueId || '', me: sleeper.me || '', question }) });
     let j = null; try { j = await res.json(); } catch(e){}
     if(res.status === 401){ $('coachKey').classList.add('need'); $('coachKey').focus(); throw new Error('Bitte unten einmal das Coach-Passwort eingeben und nochmals «Coach fragen» klicken. Die Seite merkt es sich danach.'); }
-    if(!res.ok || !j) throw new Error((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status));
+    if(!res.ok || !j) throw new Error(((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status)) + (j && j.detail ? '\n\n(' + j.detail + ')' : ''));
     ai.content = j.answer + (j.truncated ? '\n\n*(Antwort wurde gekürzt.)*' : '');
     ai.sources = j.sources || []; ai.queries = j.queries || []; ai.news = j.news || []; ai.model = j.model || ''; ai.cost = j.cost;
     setTimeout(loadMemory, 9000);
