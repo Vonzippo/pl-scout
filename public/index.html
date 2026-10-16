@@ -767,6 +767,12 @@ function computeRaw(){
   }
 }
 const posCorr = {};
+const PAST_W = [0.6, 0.3, 0.1]; // letzte, vorletzte, drittletzte Saison
+function seasonsOf(p){
+  if(!priorData || !priorData.p) return [];
+  const sns = priorData.seasons || [priorData.season];
+  return sns.map((sn, i) => ({ sn, w: PAST_W[i] || 0, h: i === 0 ? priorData.p[p.id] : priorData.h && priorData.h[p.id] && priorData.h[p.id][sn] })).filter(x => x.h && x.h.minutes > 0);
+}
 // Score vergangener Saisons: wie gut war der Spieler in jener Saison (0–100, im Vergleich zu seiner Position derselben Saison)
 function histToP(pos, h){
   return { pos, minutes:h.minutes, goals:h.goals_scored, assists:h.assists, xg:h.expected_goals, xa:h.expected_assists, cs:h.clean_sheets, gc:h.goals_conceded, xgc:h.expected_goals_conceded,
@@ -793,12 +799,18 @@ function computePast(){
       const S = k => pool.map(r => r[k]).sort((a,b)=>a-b);
       const SE = S('e'), SX = S('x'), ST = S('pts');
       for(const r of rows){
-        const sc = Math.round((0.40 * pctRank(SE, r.e) + 0.25 * pctRank(SX, r.x) + 0.35 * pctRank(ST, r.pts)) * 100);
+        const sc = Math.round(pctRank(SE, r.e) * 100); // nur Punkte pro gespielter Minute (Pkt/90, bei wenig Minuten vorsichtig gewichtet)
         r.p.past.push({ season: sn, score: sc, min: r.min, pts: r.pts, pts90: r.pts90, goals: r.h.goals_scored, assists: r.h.assists, cs: r.h.clean_sheets, starts: r.h.starts });
       }
     }
   });
-  for(const p of players){ p.past.sort((a,b) => b.season.localeCompare(a.season)); p.pastScore = p.past[0] && p.past[0].season === priorData.season ? p.past[0].score : null; }
+  for(const p of players){
+    p.past.sort((a,b) => b.season.localeCompare(a.season));
+    // Gesamtnote vergangene Saisons: 60 % letzte, 30 % vorletzte, 10 % drittletzte (fehlende Saisons werden umverteilt)
+    let ws = 0, sum = 0;
+    for(const x of p.past){ const i = seasons.indexOf(x.season); x.w = PAST_W[i] || 0; sum += x.w * x.score; ws += x.w; }
+    p.pastScore = ws > 0 ? Math.round(sum / ws) : null;
+  }
 }
 function computeScores(){
   // Positions-Vergleich: Effizienz mit Minuten-Glättung, Perzentile je Position
@@ -813,12 +825,13 @@ function computeScores(){
     const corr = cal.length >= 10 ? Math.max(0.7, Math.min(1.6, cal.reduce((t,p)=>t+p.pts90,0) / Math.max(0.1, cal.reduce((t,p)=>t+est90(p),0)))) : 1;
     posCorr[pos] = corr;
     for(const p of grp){
-      const h = priorData && priorData.p && priorData.p[p.id];
       p.prior = null;
-      if(h && h.minutes >= 900){
-        const q = { pos:p.pos, minutes:h.minutes, goals:h.goals_scored, assists:h.assists, xg:h.expected_goals, xa:h.expected_assists, cs:h.clean_sheets, gc:h.goals_conceded, xgc:h.expected_goals_conceded,
-          saves:h.saves, penSaved:h.penalties_saved, penMissed:h.penalties_missed, yellow:h.yellow_cards, red:h.red_cards, ownGoals:h.own_goals, starts:h.starts, tackles:h.tackles, cbi:h.clearances_blocks_interceptions, recoveries:h.recoveries };
-        p.prior = { min:h.minutes, pts90: est90(q) * corr, xpts90: pointsFrom(q, scoring, true) / h.minutes * 90, season: priorData.season };
+      const hs = seasonsOf(p);
+      const use = hs.filter(x => x.h.minutes >= 450);
+      if(use.reduce((t,x)=>t+x.h.minutes,0) >= 900){
+        let wp = 0, wx = 0, ws = 0;
+        for(const x of use){ const q = histToP(p.pos, x.h); wp += x.w * est90(q) * corr; wx += x.w * pointsFrom(q, scoring, true) / x.h.minutes * 90; ws += x.w; }
+        p.prior = { min: use.reduce((t,x)=>t+x.h.minutes,0), pts90: wp/ws, xpts90: wx/ws, season: use.map(x => x.sn).join(', '), w: use.map(x => Math.round(x.w*100)).join('/') };
       }
       const K = p.prior ? 600 : 270, w = p.minutes / (p.minutes + K);
       p.effW = w;
@@ -1346,7 +1359,7 @@ const COLDEFS = [
   {k:'xMin',   t:'xMin',    cls:'mono', cell:p => `<span title="Startwahrscheinlichkeit ${Math.round((p.pStart||0)*100)}%">${Math.round(p.xMin||0)}</span>`},
   {k:'l10',    t:'Ø L10',   cell:p => `${fmt(p.l10,1)} ${sparkHtml(p)}`},
   {k:'minL5',  t:'Min L5',  cell:p => Math.round(p.minL5)},
-  {k:'past1',  t:'Score Vorsaison', cell:p => { const x = (p.past||[])[0]; return x && x.season === priorData?.season ? `<span class="score ${tierOf(x.score)[0]}" title="${esc(x.season+': '+x.min+' Min., '+fmt(x.pts,0)+' Pkt (eure Wertung, geschätzt), '+x.goals+' T / '+x.assists+' A')}">${x.score}</span>` : '<span style="color:var(--muted)">–</span>'; }},
+  {k:'past1',  t:'Score Vorsaisons', cell:p => p.pastScore != null ? `<span class="score ${tierOf(p.pastScore)[0]}" title="${esc('Pkt/90 vergangener Saisons (60/30/10 %): ' + (p.past||[]).map(x => x.season+' '+x.score+' ('+fmt(x.pts90,1)+' Pkt/90, '+x.min+' Min.)').join(' · '))}">${p.pastScore}</span>` : '<span style="color:var(--muted)">–</span>'},
   {k:'slp',    t:'Sleeper-Prog.', cls:'mono', cell:p => p.slp != null ? fmt(p.slp,1) : '–'},
 
   {k:'minutes',t:'Min',     cell:p => p.minutes},
@@ -1405,7 +1418,7 @@ function sortVal(p,k){
   if(k==='ki'){ const r = kiOf(p); return r ? r.r : -1; }
   if(k==='slp') return p.slp ?? -99;
   if(k==='prog') return p.prog ?? -99;
-  if(k==='past1'){ const x = (p.past||[])[0]; return x && x.season === priorData?.season ? x.score : -1; }
+  if(k==='past1') return p.pastScore ?? -1;
   return p[k];
 }
 function filtered(){
@@ -1490,7 +1503,7 @@ function renderCompare(){
   if(!sel.length){ $('cmp').className='empty'; $('cmp').innerHTML='Noch keine Spieler ausgewählt.'; return; }
   $('cmp').className='';
   const metrics = [
-    ['Score (Spielerqualität)','score',0],['Score Vorsaison','pastScore',0],['Prognose (4 Spiele)','prog',1],['xFP nächstes Spiel','xfp',1],['Floor','floor',1],['Ceiling','ceil',1],['xMin','xMin',0],['Ø Pkt letzte 10','l10',1],['Ø Pkt letzte 3','l3',1],['Min. letzte 5','minL5',0],
+    ['Score (Spielerqualität)','score',0],['Score Vorsaisons (60/30/10)','pastScore',0],['Prognose (4 Spiele)','prog',1],['xFP nächstes Spiel','xfp',1],['Floor','floor',1],['Ceiling','ceil',1],['xMin','xMin',0],['Ø Pkt letzte 10','l10',1],['Ø Pkt letzte 3','l3',1],['Min. letzte 5','minL5',0],
     ['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
     ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['FPL-Form','form',1]
   ];
@@ -1829,8 +1842,8 @@ function compWhy(p, k){
   const i = p.inv;
   switch(k){
     case 'form': return p.l10games ? `Ø ${fmt(p.l10,1)} Pkt in seinen letzten ${p.l10games} Einsätzen${p.missed ? ` (${p.missed} verpasste Spiele zählen nicht als 0)` : ''}` : `Ø ${fmt(p.l10,1)} Pkt pro Spiel`;
-    case 'eff': return p.prior ? `${fmt(p.pts90,1)} Pkt/90 diese Saison (${p.minutes} Min.) · Vorsaison ${p.prior.season}: ${fmt(p.prior.pts90,1)} Pkt/90 (${p.prior.min} Min.) → diese Saison zählt ${Math.round(p.effW*100)}%` : `${fmt(p.pts90,1)} Pkt pro 90 Min.${p.minutes < 600 ? ' (wenig Minuten, keine PL-Vorsaison)' : ''}`;
-    case 'xs': return `${fmt(p.xpts90,1)} erwartete Pkt pro 90 (aus xG/xA)${p.prior ? ` · Vorsaison ${fmt(p.prior.xpts90,1)}` : ''}`;
+    case 'eff': return p.prior ? `${fmt(p.pts90,1)} Pkt/90 diese Saison (${p.minutes} Min.) · Vorsaisons (${p.prior.season}, ${p.prior.w} %): ${fmt(p.prior.pts90,1)} Pkt/90 → diese Saison zählt ${Math.round(p.effW*100)}%` : `${fmt(p.pts90,1)} Pkt pro 90 Min.${p.minutes < 600 ? ' (wenig Minuten, keine PL-Vorsaison)' : ''}`;
+    case 'xs': return `${fmt(p.xpts90,1)} erwartete Pkt pro 90 (aus xG/xA)${p.prior ? ` · Vorsaisons ${fmt(p.prior.xpts90,1)}` : ''}`;
     case 'min': return `Ø ${Math.round(p.minL5)} Min. in den letzten 5 · Startelf in ${Math.round((p.startRate||0)*100)}% der Spiele`;
     case 'inv': return i ? (p.pos === 'GKP' ? `${fmt(i.p90,0)} Pässe, ${fmt(i.sv90,1)} Paraden pro 90` :
       `${fmt(i.p90,0)} Pässe · ${fmt(i.kp90,1)} Key Passes · ${fmt(i.sat90,1)} Schüsse · ${fmt(i.def90,1)} Tackles+Int. pro 90`) : 'zu wenig Einsatzminuten für eine Aussage';
@@ -1941,9 +1954,9 @@ function playerSheet(p){
 
   // Vergangene Saisons
   if(p.past && p.past.length){
-    h += `<div class="pvsec"><h3>Vergangene Saisons (Premier League)</h3><div style="overflow-x:auto"><table class="pvgames"><thead><tr><th class="l">Saison</th><th>Score</th><th>Min</th><th>Pkt*</th><th>Pkt/90</th><th>T</th><th>A</th><th>${p.pos==='GKP'||p.pos==='DEF'?'ZN':'Starts'}</th></tr></thead><tbody>` +
-      p.past.map(x => `<tr><td class="l">${esc(x.season)}</td><td><span class="score ${tierOf(x.score)[0]}">${x.score}</span></td><td>${x.min}</td><td>${fmt(x.pts,0)}</td><td>${fmt(x.pts90,1)}</td><td>${x.goals}</td><td>${x.assists}</td><td>${p.pos==='GKP'||p.pos==='DEF'?x.cs:x.starts}</td></tr>`).join('') +
-      `</tbody></table></div><div class="nodata">* Punkte nach eurer Liga-Wertung, aus den offiziellen Saisonwerten hochgerechnet. Score = wie gut er in jener Saison im Vergleich zu allen ${POS_PL[p.pos]} war (Pkt/90, erwartete Pkt/90, Gesamtpunkte). Ältere Saisons ohne Tackle-/Klärungsdaten unterschätzen Verteidiger etwas.</div></div>`;
+    h += `<div class="pvsec"><h3>Vergangene Saisons (Premier League)</h3><div style="overflow-x:auto"><table class="pvgames"><thead><tr><th class="l">Saison</th><th>Score</th><th>Gew.</th><th>Min</th><th>Pkt*</th><th>Pkt/90</th><th>T</th><th>A</th><th>${p.pos==='GKP'||p.pos==='DEF'?'ZN':'Starts'}</th></tr></thead><tbody>` +
+      p.past.map(x => `<tr><td class="l">${esc(x.season)}</td><td><span class="score ${tierOf(x.score)[0]}">${x.score}</span></td><td>${Math.round((x.w||0)*100)}%</td><td>${x.min}</td><td>${fmt(x.pts,0)}</td><td>${fmt(x.pts90,1)}</td><td>${x.goals}</td><td>${x.assists}</td><td>${p.pos==='GKP'||p.pos==='DEF'?x.cs:x.starts}</td></tr>`).join('') +
+      `<tr><td class="l"><b>Gesamt</b></td><td><span class="score ${tierOf(p.pastScore)[0]}">${p.pastScore}</span></td><td colspan="6" class="l" style="color:var(--muted)">gewichtet 60/30/10 %</td></tr></tbody></table></div><div class="nodata">Score pro Saison = Punkte pro gespielter Minute (Pkt/90) im Vergleich zu allen ${POS_PL[p.pos]} jener Saison; wenige Minuten zählen vorsichtiger. * Punkte nach eurer Liga-Wertung, aus den offiziellen Saisonwerten hochgerechnet. Ältere Saisons ohne Tackle-/Klärungsdaten unterschätzen Verteidiger etwas. Dieselben Pkt/90 (60/30/10) fliessen als «Klasse» in die Effizienz des aktuellen Scores.</div></div>`;
   } else h += `<div class="pvsec"><h3>Vergangene Saisons</h3><div class="nodata">Keine Premier-League-Saison in den letzten 3 Jahren (Neuzugang aus einer anderen Liga oder Aufsteiger).</div></div>`;
 
   // Saison
