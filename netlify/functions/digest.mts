@@ -63,8 +63,8 @@ export default async (req: Request) => {
   const byRid: Record<number, any> = {}; const ownerOf: Record<string, string> = {};
   for (const r of rosters || []) { byRid[r.roster_id] = r; for (const pid of r.players || []) ownerOf[pid] = r.owner_id; }
   const tName = (rid: number) => team[byRid[rid]?.owner_id] || `Team ${rid}`;
-  const kiBySid: Record<string, any> = {};
-  for (const w of watch as any[]) if (w.sid && ki.ratings[w.id]) kiBySid[w.sid] = ki.ratings[w.id];
+  const kiBySid: Record<string, any> = {}, lineBySid: Record<string, string> = {};
+  for (const w of watch as any[]) { if (w.sid && ki.ratings[w.id]) kiBySid[w.sid] = ki.ratings[w.id]; if (w.sid && w.line) lineBySid[w.sid] = w.line; }
   const pName = (pid: string) => { const p = P[pid]; return p ? `${p.n} (${p.t} ${p.p.map((x) => POS[x] || x).join("/")})` : pid; };
   const status = (pid: string) => { const p = P[pid]; return p?.inj ? `${stDe(p.inj)}${p.ret ? ", zurück ca. " + day(p.ret) : ""}` : ""; };
   const kiTxt = (pid: string) => { const k = kiBySid[pid]; if (!k || Date.now() - k.ts > 48 * 3600e3) return ""; return k.v >= 2 && k.b != null ? `Score ${k.r} (Rechnung ${k.b}): ${k.t}` : `KI ${k.r}: ${k.t}`; };
@@ -138,6 +138,12 @@ export default async (req: Request) => {
   if (injOthers.length) out.push(`\n## Verletzte/gesperrte Spieler in anderen Kadern\n${injOthers.map((pid) => `- ${pName(pid)} – ${team[ownerOf[pid]]}: ${status(pid)}${news[pid] && !full ? ` (News ${news[pid].date}: ${news[pid].title})` : ""}`).join("\n")}`);
   out.push(`\n## Transaktionen (${full ? "ganze Saison" : "letzte 3 Spieltage"}, neueste zuerst)\n${txLines.join("\n") || "- keine"}`);
   const tr = (arr: any[]) => arr.slice(0, 12).map((x: any) => `${P[x.player_id]?.n || x.player_id} (${P[x.player_id]?.t || ""}, ${x.count}×${ownerOf[x.player_id] ? ", bei " + team[ownerOf[x.player_id]] : ", FREI"})`).join("; ");
+  // Beste freie Spieler nach PL-Scout-Score (inkl. KI-Feinschliff), mit Zahlen
+  const freeBest = (watch as any[]).filter((w) => w.sid && !ownerOf[w.sid]).map((w) => ({ w, k: ki.ratings[w.id] }))
+    .map((x) => ({ ...x, sc: x.k && x.k.v >= 2 ? x.k.r : x.w.score ?? 0 })).sort((a, b) => b.sc - a.sc).slice(0, full ? 40 : 15);
+  if (freeBest.length) out.push(`\n## Beste FREIE Spieler (PL-Scout-Score 0–100 inkl. KI-Feinschliff)\n` + freeBest.map(({ w, k, sc }) =>
+    `- ${w.name} (${w.club} ${w.pos}) Score ${sc}${status(w.sid) ? " ⚠ " + status(w.sid) : ""}${k ? " – " + k.t : ""}${full ? " | " + w.line : ""}`).join("\n"));
+  if (full && myR) out.push(`\n## Zahlen zu meinem Kader (Score-Bausteine, Minuten, Tore, xG, nächste Gegner)\n` + (myR.players || []).filter((pid: string) => lineBySid[pid]).map((pid: string) => `- ${P[pid]?.n || pid}: ${lineBySid[pid]}`).join("\n"));
   out.push(`\n## Sleeper-Trend letzte 24 h (alle Sleeper-Ligen)\nMeistgeholt: ${tr(trendAdd)}\nMeistabgegeben: ${tr(trendDrop)}`);
   return new Response(out.join("\n"), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60", "netlify-cdn-cache-control": "public, s-maxage=300, stale-while-revalidate=600" } });
 };
