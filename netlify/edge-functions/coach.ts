@@ -118,30 +118,41 @@ export default async (req: Request, context?: any) => {
 
   const t0 = Date.now();
   const sys = systemPrompt(today, season) + memBlock + digest + newsBlock;
-  const orCall = (model: string, msgs: any[], maxTokens: number, effort: string | null, ms: number) => fetch("https://openrouter.ai/api/v1/chat/completions", {
+  // OpenRouter: Websuche über das «web»-Plugin (ein paar aktuelle Treffer), begrenztes Nachdenken, damit die Antwort sicher Platz hat
+  const orCall = (model: string, msgs: any[], maxTokens: number, think: number, search: boolean, ms: number) => fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${orKey}`, "HTTP-Referer": "https://pl-scout-oetterli.netlify.app", "X-Title": "PL Scout" },
     signal: AbortSignal.timeout(ms),
-    body: JSON.stringify({ model, messages: msgs, max_tokens: maxTokens, ...(effort ? { reasoning: { effort, exclude: true } } : {}), usage: { include: true } }),
+    body: JSON.stringify({ model, messages: msgs, max_tokens: maxTokens, ...(think ? { reasoning: { max_tokens: think, exclude: true } } : {}),
+      ...(search ? { plugins: [{ id: "web", max_results: 4, search_prompt: `Aktuelle Web-Ergebnisse (heute ${today}, Saison ${season}). Nutze sie für News, Verletzungen und Aufstellungen und nenne die Quelle mit Datum:` }] } : {}),
+      usage: { include: true } }),
   });
   const orModels = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-haiku-5.5,deepseek/deepseek-v4.1-flash").split(",").map((x) => x.trim()).filter(Boolean);
-  let orAnswer = "", orModel = "", orCost = 0, orErr = "";
+  const orPlan: [string, boolean, number][] = [[orModels[0], true, 2048], [orModels[0], false, 1024], ...orModels.slice(1).map((m): [string, boolean, number] => [m, false, 1024])];
+  let orAnswer = "", orModel = "", orCost = 0, orErr = "", orSources: { url: string; title?: string }[] = [], orSearched = false;
   if (orKey) {
-    for (const m of orModels) {
-      if (Date.now() - t0 > 22000) break;
+    for (const [m, search, think] of orPlan) {
+      const left = 36000 - (Date.now() - t0);
+      if (left < 8000) break;
       try {
-        const r = await orCall(m, [{ role: "system", content: sys + "\n\n(Hinweis: Eine eigene Websuche ist hier nicht verfügbar – stütze dich auf die Live-Daten, Sleeper-News und Schlagzeilen oben und sage, wenn etwas unklar ist.)" }, ...messages], 6000, "medium", Math.max(6000, 32000 - (Date.now() - t0)));
+        const note = search ? "" : "\n\n(Hinweis: Websuche ist gerade nicht verfügbar – stütze dich auf die Live-Daten, Sleeper-News und Schlagzeilen oben und sage, wenn etwas unklar ist.)";
+        const r = await orCall(m, [{ role: "system", content: sys + note }, ...messages], 8000, think, search, Math.min(left, search ? 28000 : left));
         const d: any = await r.json().catch(() => null);
-        const c = d?.choices?.[0]?.message?.content;
-        if (r.ok && c) { orAnswer = String(c); orModel = m; orCost = Number(d?.usage?.cost) || 0; break; }
-        orErr = `${r.status} ${d?.error?.message || ""}`;
-      } catch (e) { orErr = "timeout"; }
+        const msg = d?.choices?.[0]?.message || {};
+        const c = msg.content;
+        if (r.ok && c && String(c).trim()) {
+          orAnswer = String(c); orModel = m; orCost = Number(d?.usage?.cost) || 0; orSearched = search;
+          for (const an of msg.annotations || []) { const u = an?.url_citation; if (u?.url && !orSources.some((x) => x.url === u.url) && orSources.length < 8) orSources.push({ url: u.url, title: u.title }); }
+          break;
+        }
+        orErr = `${r.status} ${d?.error?.message || (r.ok ? "leere Antwort (" + (d?.choices?.[0]?.finish_reason || "?") + ")" : "")}`.trim();
+      } catch (e) { orErr = `Zeitüberschreitung (${m}${search ? " mit Websuche" : ""})`; }
     }
   }
   if (orAnswer) {
     const answer = orAnswer.replace(/【[^】]*】/g, "").trim();
-    return json(200, { answer, sources: [], queries: [], news: news.map(({ player, title, source, date, url }) => ({ player, title, source, date, url })),
-      model: orModel, cost: orCost, memory: notes.length });
+    return json(200, { answer, sources: orSources, queries: orSearched ? ["Websuche (aktuelle Treffer)"] : [], news: news.map(({ player, title, source, date, url }) => ({ player, title, source, date, url })),
+      model: orModel + (orSearched ? " + Websuche" : ""), cost: orCost, memory: notes.length });
   }
   if (!apiKey) return json(502, { error: `OpenRouter-Fehler (${orErr || "keine Antwort"}). Bitte nochmals versuchen.` });
   const call = (model: string, withSearch: boolean, effort: string) => fetch("https://api.groq.com/openai/v1/chat/completions", {
