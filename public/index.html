@@ -1743,7 +1743,7 @@ async function askCoach(){
     if(!res.ok || !j) throw new Error(((j && j.error) || (res.status===404 ? 'Coach-Dienst nicht gefunden (läuft nur auf Netlify).' : 'Fehler '+res.status)) + (j && j.detail ? '\n\n(' + j.detail + ')' : ''));
     ai.content = j.answer + (j.truncated ? '\n\n*(Antwort wurde gekürzt.)*' : '');
     ai.sources = j.sources || []; ai.queries = j.queries || []; ai.news = j.news || []; ai.model = j.model || ''; ai.cost = j.cost;
-    setTimeout(loadMemory, 9000);
+    if(j.answer) fetch('/api/ki/remember', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ k: memKey(), question, answer: j.answer }) }).then(() => loadMemory()).catch(() => {});
   } catch(e){
     ai.error = e.message;
   } finally {

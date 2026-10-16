@@ -138,32 +138,8 @@ export default async (req: Request, context?: any) => {
       } catch (e) { orErr = "timeout"; }
     }
   }
-  // Gedächtnis nachführen: dauerhafte Fakten aus Frage + Antwort festhalten (läuft nach der Antwort weiter)
-  const remember = async (answer: string) => {
-    if (!orKey || !memK || !secret) return;
-    const question = String(body.question || messages[messages.length - 1].content).slice(0, 1500);
-    const prompt = `Du pflegst das Langzeitgedächtnis eines Fantasy-Fussball-Coaches für einen Nutzer (Sleeper-Liga, Premier League).
-Bisherige Notizen (id: text):\n${notes.map((n: any) => `${n.id}: ${n.t}`).join("\n") || "(keine)"}
-
-Neue Frage des Nutzers: ${question}
-Antwort des Coaches (gekürzt): ${answer.slice(0, 2500)}
-
-Halte NUR fest, was in späteren Gesprächen nützlich bleibt: Vorlieben und Ziele des Nutzers, getroffene oder geplante Entscheide (Trades, Waiver, Aufstellung), Abmachungen, was er von Ratschlägen hält, wichtige Empfehlungen des Coaches mit Datum. Keine Tagesdaten, die sich ohnehin aus den Live-Daten ergeben (Punkte, Scores). Kurze deutsche Sätze. Entferne Notizen, die überholt sind oder der neuen Info widersprechen.
-Antworte nur mit JSON: {"add":["..."],"remove":["id"]} (leere Listen, wenn nichts zu tun ist).`;
-    try {
-      const r = await orCall(orModels[orModels.length - 1], [{ role: "user", content: prompt }], 600, null, 15000);
-      const d: any = await r.json().catch(() => null);
-      const m = String(d?.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
-      if (!m) return;
-      const j = JSON.parse(m[0]);
-      if ((j.add || []).length || (j.remove || []).length)
-        await fetch(new URL(`/api/ki/memory?k=${memK}`, req.url), { method: "POST", headers: { "content-type": "application/json", "x-ki-secret": secret }, body: JSON.stringify({ add: j.add || [], remove: j.remove || [] }) });
-    } catch { /* Gedächtnis ist Zusatz */ }
-  };
   if (orAnswer) {
     const answer = orAnswer.replace(/【[^】]*】/g, "").trim();
-    const job = remember(answer);
-    if (context?.waitUntil) context.waitUntil(job); else await job;
     return json(200, { answer, sources: [], queries: [], news: news.map(({ player, title, source, date, url }) => ({ player, title, source, date, url })),
       model: orModel, cost: orCost, memory: notes.length });
   }

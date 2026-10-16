@@ -45,6 +45,40 @@ export default async (req: Request) => {
     return json(200, await takeQuota(String(body?.kind || "")));
   }
 
+  // Gedächtnis nachführen: nach jeder Coach-Antwort dauerhafte Fakten festhalten (günstiges Modell über OpenRouter)
+  if (path.endsWith("/remember") && req.method === "POST") {
+    const key = Netlify.env.get("OPENROUTER_API_KEY");
+    const body: any = await req.json().catch(() => ({}));
+    const k = String(body?.k || "");
+    if (!key || !/^[0-9a-z_-]{3,60}$/i.test(k)) return json(200, { ok: false });
+    if (!(await takeQuota("mem")).ok) return json(200, { ok: false, reason: "limit" });
+    const notes = await loadMemory(k);
+    const prompt = `Du pflegst das Langzeitgedächtnis eines Fantasy-Fussball-Coaches für einen Nutzer (Sleeper-Liga, Premier League). Heute: ${new Date().toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" })}.
+Bisherige Notizen (id: text):
+${notes.map((n) => `${n.id}: ${n.t}`).join("\n") || "(keine)"}
+
+Neue Frage des Nutzers: ${String(body?.question || "").slice(0, 1500)}
+Antwort des Coaches (gekürzt): ${String(body?.answer || "").slice(0, 2500)}
+
+Halte NUR fest, was in späteren Gesprächen nützlich bleibt: Vorlieben und Ziele des Nutzers, getroffene oder geplante Entscheide (Trades, Waiver, Aufstellung), Abmachungen, was er von Ratschlägen hält, wichtige Empfehlungen des Coaches (mit Datum). Keine Werte, die sich ohnehin aus den Live-Daten ergeben (Punkte, Scores, FAAB-Stand). Kurze deutsche Sätze, Schweizer Rechtschreibung. Entferne Notizen, die überholt sind oder der neuen Info widersprechen.
+Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn nichts zu tun ist.`;
+    const model = (Netlify.env.get("OPENROUTER_MODELS") || "anthropic/claude-haiku-5.5").split(",")[0].trim();
+    try {
+      const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST", signal: AbortSignal.timeout(20000),
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "HTTP-Referer": "https://pl-scout-oetterli.netlify.app", "X-Title": "PL Scout" },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], max_tokens: 700 }),
+      });
+      const d: any = await r.json().catch(() => null);
+      const m = String(d?.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
+      if (!m) return json(200, { ok: false, reason: d?.error?.message || "keine JSON-Antwort" });
+      const j = JSON.parse(m[0]);
+      const add = (Array.isArray(j.add) ? j.add : []).map(String).slice(0, 8), remove = (Array.isArray(j.remove) ? j.remove : []).map(String).slice(0, 20);
+      const out = add.length || remove.length ? await updateMemory(k, add, remove) : notes;
+      return json(200, { ok: true, added: add.length, removed: remove.length, notes: out });
+    } catch (e: any) { return json(200, { ok: false, reason: String(e?.message || e).slice(0, 120) }); }
+  }
+
   // Gedächtnis: lesen (Seite + Coach), Notiz löschen (Seite), Notizen ändern (nur Coach mit Geheimnis)
   if (path.endsWith("/memory")) {
     const k = String(url.searchParams.get("k") || "");
@@ -64,4 +98,4 @@ export default async (req: Request) => {
   return json(404, { error: "unbekannt" });
 };
 
-export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota", "/api/ki/memory"] };
+export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota", "/api/ki/memory", "/api/ki/remember"] };

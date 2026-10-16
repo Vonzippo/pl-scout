@@ -40,7 +40,7 @@ export async function dueList(n = 15) {
 }
 
 // Harte Tageslimits (Schutz vor Kosten): zählt Aufrufe pro Tag und Art
-export const DAILY_LIMITS: Record<string, number> = { coach: 40, bot: 25 };
+export const DAILY_LIMITS: Record<string, number> = { coach: 40, bot: 25, mem: 60 };
 export async function takeQuota(kind: string): Promise<{ ok: boolean; used: number; limit: number }> {
   const limit = DAILY_LIMITS[kind] ?? 0;
   const day = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
