@@ -166,6 +166,7 @@ td.muted{color:var(--muted)}
 .fold[open]>summary .mini{display:none}
 .fold[open]{padding-bottom:2px}
 .fold>.status{margin-top:4px}
+.fold>.filters{margin-top:6px}
 .databar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-6px 0 12px}
 .databar button{font-size:12px;padding:4px 10px}
 .pltab{border-collapse:collapse;width:100%;min-width:560px}
@@ -337,6 +338,7 @@ body.noscroll{overflow:hidden}
   </section>
 
   <section id="viewPlayers">
+  <details class="fold" id="foldFilter"><summary>🔎 Suche & Filter <span id="filterMini" class="mini"></span></summary>
   <div class="filters">
     <input id="q" placeholder="Spieler suchen …" size="18">
     <div class="seg" id="posSeg">
@@ -354,6 +356,7 @@ body.noscroll{overflow:hidden}
     <label><input type="checkbox" id="fitOnly"> nur fit</label>
     <button class="ghost" id="colBtn">⚙️ Spalten</button>
   </div>
+  </details>
 
   <div class="card" id="colPanel" hidden style="margin-bottom:12px">
     <h2>Spalten anpassen <span>Häkchen = anzeigen · ↑↓ = Reihenfolge · Handy, Tablet und grosser Bildschirm werden getrennt gespeichert</span></h2>
@@ -1394,7 +1397,18 @@ function renderHead(){
   $('thead').innerHTML = activeCols().map(c =>
     `<th class="${c.l?'l':''} ${state.sort===c.k?'sorted':''}" data-k="${c.k}">${c.t}${state.sort===c.k?(state.dir<0?' ▾':' ▴'):''}</th>`).join('');
 }
+function filterSummary(){
+  const f = [];
+  if(state.q) f.push(`«${state.q}»`);
+  f.push(({ '':'alle Positionen', GKP:'TW', DEF:'VER', MID:'MIT', FWD:'STU' })[state.pos || '']);
+  if(state.team) f.push(teams[state.team]?.short || '');
+  if(state.avail && state.avail !== 'all') f.push($('avail').selectedOptions[0]?.textContent || state.avail);
+  if(state.minMin) f.push(`ab ${state.minMin} Min.`);
+  if(state.fitOnly) f.push('nur fit');
+  return '· ' + f.filter(Boolean).join(' · ');
+}
 function renderTable(){
+  if($('filterMini')) $('filterMini').textContent = filterSummary();
   const rows = filtered().sort((a,b) => {
     const va = sortVal(a,state.sort), vb = sortVal(b,state.sort);
     return (va>vb?1:va<vb?-1:0) * state.dir;
@@ -2041,7 +2055,7 @@ $('lgBody').addEventListener('click', e => {
 { const v = store.get('view'); if(v === 'teams' || v === 'coach') $('tabs').querySelector(`[data-tab=${v}]`).click(); }
 $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeague(); });
 
-for(const id of ['foldTop','foldKi']){ const d = $(id); if(!d) continue; d.open = !!store.get(id); d.addEventListener('toggle', () => store.set(id, d.open)); }
+for(const id of ['foldTop','foldKi','foldFilter']){ const d = $(id); if(!d) continue; d.open = !!store.get(id); d.addEventListener('toggle', () => store.set(id, d.open)); }
 /* ---------- Start ---------- */
 (async () => {
   renderScoring(); renderScoreWeights();
