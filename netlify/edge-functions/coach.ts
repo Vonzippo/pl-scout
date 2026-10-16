@@ -189,7 +189,7 @@ export default async (req: Request, context?: any) => {
     const is429 = lastErr.startsWith("429");
     return json(is429 ? 429 : 502, { error: is429
       ? `Groq-Limit erreicht (${/per day|TPD|RPD/.test(lastErr) ? "Tageskontingent aufgebraucht – morgen wieder verfügbar, " : "bitte 1 Minute warten"}).`
-      : "Der Coach konnte gerade keine Antwort erzeugen (mehrere Versuche). Bitte nochmals senden .",
+      : "Der Coach konnte gerade keine Antwort erzeugen (mehrere Versuche). Bitte nochmals senden.",
       detail: `OpenRouter: ${orKey ? (orErr || "kein Ergebnis") : "nicht eingerichtet (OPENROUTER_API_KEY fehlt)"} · Groq: ${lastErr.slice(0, 160)}` });
   }
 
