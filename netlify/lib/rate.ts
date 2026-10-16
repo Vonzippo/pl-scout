@@ -74,14 +74,15 @@ export async function rateBatch(infos: Info[], apiKey: string, model?: string): 
   const system = `Du bist Scout für Fantasy-Fussball (englische Premier League, Saison ${season}). Heute ist ${today}.
 Jeder Spieler hat einen BERECHNETEN SCORE (0–100): Spielerqualität im Vergleich zu seiner Position, nur aus Zahlen (Form, Punkte pro 90, xG/xA, Einsatzzeit, Ballbeteiligung, Verletzungsstatus).
 Deine Aufgabe: Gib einen VERFEINERTEN SCORE zurück – eine genauere Schätzung desselben Werts, weil du zusätzlich News, Trainer-Aussagen, Rolle, Rotation, Transfer und Fitness kennst, die die Zahlen nicht sehen.
-- Ohne relevante News: nahe am berechneten Score bleiben (höchstens ±5).
-- Positive News (Stammplatz gesichert, neue offensivere Rolle, Formhoch bestätigt, Konkurrent verletzt): bis +15.
-- Negative News: Rotation/Bankplatz droht −5 bis −20; fraglich fürs nächste Spiel −10 bis −25; fällt aus oder gesperrt: höchstens 25 (bei mehreren Wochen Ausfall höchstens 10).
+- Der Score misst, WIE GUT der Spieler ist – nicht, ob er gerade verfügbar ist. Verletzungen und Sperren werden separat in Prognose und Einsatzminuten berücksichtigt: dafür NICHTS abziehen.
+- Ohne relevante News: nahe am berechneten Score bleiben (höchstens ±3).
+- Positive Qualitäts-Signale (neue offensivere Rolle, Formhoch bestätigt, Trainer setzt klar auf ihn): bis +10.
+- Negative Qualitäts-Signale (verliert Stammplatz an Konkurrenten, Formkrise laut Trainer, schwächere Rolle): bis −8.
 - Die Sleeper-News (Rotowire) sind am zuverlässigsten, die Schlagzeilen ergänzen.
 - Achtung Namensvettern: Schlagzeilen, die nicht eindeutig diesen Fussballer dieses Klubs betreffen (andere Person, anderer Sport, Todesanzeige), ignorieren. Hat er laut Zahlen zuletzt gespielt und melden weder Sleeper noch die Premier League eine Verletzung, gilt er als verfügbar.
 - Ist der berechnete Score unbekannt, schätze ihn selbst aus den Zahlen.
 - SPRACHE: "t" immer auf DEUTSCH, auch wenn die News englisch sind. Keine Zahl wie «+5» im Text, die Abweichung steht schon im Score.
-- "t": ein Satz auf Deutsch (Schweizer Rechtschreibung, kein ß), max. 140 Zeichen: warum du vom berechneten Score abweichst (oder dass nichts dagegen spricht), mit Datum der wichtigsten News.
+- "t": ein Satz auf Deutsch (Schweizer Rechtschreibung, kein ß), max. 140 Zeichen: warum du vom berechneten Score abweichst (oder dass nichts dagegen spricht), mit Datum der wichtigsten News. Verletzungsstatus darfst du erwähnen, er ändert den Score aber nicht.
 Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"..."}]}`;
 
   let data: any = null, lastErr = "";
@@ -115,7 +116,7 @@ Antworte NUR mit JSON in genau diesem Format: {"ratings":[{"id":123,"r":72,"t":"
     if (k < 0 || !isFinite(Number(x.r))) continue;
     out[id] = {
       r: Math.max(0, Math.min(100, Math.round(Number(x.r)))),
-      t: String(x.t || "").slice(0, 220), ts, v: 3,
+      t: String(x.t || "").slice(0, 220), ts, v: 4,
       ...(Number.isFinite(infos[k].score) ? { b: infos[k].score } : {}),
       n: [...sl[k].slice(0, 1).map(({ title, date }) => ({ title, source: "Sleeper", date })), ...news[k].slice(0, 3).map(({ title, source, date }) => ({ title, source, date }))].slice(0, 3),
     };

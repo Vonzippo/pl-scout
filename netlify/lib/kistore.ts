@@ -34,7 +34,7 @@ export async function dueList(n = 15) {
   const now = Date.now();
   // tiefe Bewertungen (Ausfall) alle 6 h neu prüfen – Status ändert sich schnell, Fehlalarme verschwinden
   // Alte Bewertungen (vor v2, nicht auf den Score aufgebaut) sofort neu machen
-  const due = watch.filter((p) => !ratings[p.id] || (ratings[p.id] as any).v !== 3 || now - ratings[p.id].ts > (ratings[p.id].r <= 20 ? 6 : MAX_AGE_H) * 3600e3)
+  const due = watch.filter((p) => !ratings[p.id] || (ratings[p.id] as any).v !== 4 || now - ratings[p.id].ts > (ratings[p.id].r <= 20 ? 6 : MAX_AGE_H) * 3600e3)
     .sort((a, b) => (ratings[a.id]?.ts || 0) - (ratings[b.id]?.ts || 0));
   return { due: due.slice(0, n), pending: due.length, total: watch.length };
 }

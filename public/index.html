@@ -651,10 +651,11 @@ function computeXfp(){
 
 /* ---------- PL-Scout-Score ---------- */
 // Score = wie gut ein Spieler ist (unabhängig vom Spielplan); kurzfristiges steckt in der Prognose
-const SCORE_DEFAULT = { form:25, eff:20, xs:15, min:15, inv:10, fit:10, trend:5 };
-const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Rolle / Einsatzzeit (Stammspieler?)', xs:'Expected (xG/xA-basiert)', inv:'Einbindung (wie oft angespielt, Ballaktionen)', fit:'Fitness (Verletzung, Sperre, Rückkehr, Wechsel)', trend:'Trend (letzte 3 vs. 10)' };
-const SCORE_SHORT = { form:'Form', eff:'Effizienz', xs:'Expected', min:'Rolle', inv:'Einbindung', fit:'Fitness', trend:'Trend' };
-let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW4') || {});
+// Score = wie gut ein Spieler ist. Verfügbarkeit (Verletzung, Sperre) steckt in Prognose/xMin, nicht im Score.
+const SCORE_DEFAULT = { form:20, eff:20, klasse:20, xs:10, min:15, inv:10, trend:5 };
+const SCORE_LABELS = { form:'Form (letzte 10 Spiele)', eff:'Effizienz (Pkt pro 90 Min.)', min:'Rolle / Einsatzzeit (Stammspieler?)', xs:'Expected (xG/xA-basiert)', inv:'Einbindung (wie oft angespielt, Ballaktionen)', klasse:'Klasse (Vorsaisons-Score, 60/30/10)', trend:'Trend (letzte 3 vs. 10)' };
+const SCORE_SHORT = { form:'Form', eff:'Effizienz', xs:'Expected', min:'Rolle', inv:'Einbindung', klasse:'Klasse', trend:'Trend' };
+let scoreW = Object.assign({}, SCORE_DEFAULT, store.get('scoreW5') || {});
 const N_FORM = 10;
 
 function liveToP(pos, st){
@@ -776,7 +777,14 @@ function computeRaw(){
       p.l10 = p.pts / g; p.l10games = 0; r.form = p.l10; p.l3 = p.l10; r.trend = 0;
       p.minL5 = Math.min(90, p.minutes / g); p.startRate = Math.min(1, p.starts / g); p.log = null;
     }
-    r.min = clamp01(p.minL5 / 90) * 0.7 + p.startRate * 0.3;
+    // Rolle: Minuten und Startelf in seinen Einsätzen; fehlende Einsätze zählen nur, wenn er NICHT verletzt/gesperrt ist (dann = Bank/Rotation)
+    { const lg = p.log || [], app = lg.filter(g => g.min > 0);
+      const sp = (sleeper.spByFpl || {})[p.id], hurt = ['i','s','d','u','n'].includes(p.status) || !!(sp && sp.injury_status);
+      p.apps = app.length; p.minPerApp = app.length ? app.reduce((t,g)=>t+g.min,0) / app.length : Math.min(90, p.minL5 || 0);
+      const startApp = app.length ? app.filter(g => g.start).length / app.length : p.startRate;
+      const appShare = lg.length ? app.length / lg.length : 1;
+      r.min = app.length >= 1 || !lg.length ? clamp01(p.minPerApp / 90) * 0.5 + startApp * 0.3 + (hurt ? Math.max(appShare, 0.8) : appShare) * 0.2 : clamp01(p.minL5 / 90) * 0.7 + p.startRate * 0.3;
+      p.hurt = hurt; }
     r.news = newsValue(p);
     p.inv = involvement(p);
     r.inv = p.inv ? p.inv.idx : null;
@@ -866,6 +874,7 @@ function computeScores(){
         for(const x of use){ wp += x.w * x.pts90; ws += x.w; if(x.xpts90 != null){ wx += x.w * x.xpts90; wxs += x.w; } }
         p.prior = { min: use.reduce((t,x)=>t+x.min,0), pts90: wp/ws, xpts90: wxs ? wx/wxs : null, season: use.map(x => x.sn).join(', '), w: use.map(x => Math.round(x.w*100)).join('/') };
       }
+      if(p.prior && p.raw.form != null){ const n = p.l10games || 0, pg = p.prior.pts90 * clamp01((p.minPerApp || 75) / 90); p.formPrior = pg; p.raw.form = (n * p.raw.form + 3 * pg) / (n + 3); }
       const K = p.prior ? 600 : 270, w = p.minutes / (p.minutes + K);
       p.effW = w;
       p.raw.eff = p.pts90 * w + (p.prior ? p.prior.pts90 : m90) * (1 - w);
@@ -882,10 +891,12 @@ function computeScores(){
         xfp: pctRank(S.xfp, p.raw.xfp)
       };
       // wer kaum spielt, bekommt bei Form/Trend keinen Bonus
-      if(p.minL5 < 20){ p.comp.form *= 0.5; p.comp.trend = Math.min(p.comp.trend, 0.5); }
+      if((p.apps ?? 9) < 2 && !p.prior){ p.comp.form *= 0.5; p.comp.trend = Math.min(p.comp.trend, 0.5); }
     }
   }
-  // 3) Gewichtete Summe + Verfügbarkeits-Abschlag
+  computePast();
+  for(const p of players) p.comp.klasse = p.pastScore != null ? p.pastScore / 100 : null;
+  // 3) Gewichtete Summe (fehlende Bausteine werden ausgelassen)
   const W = Object.entries(scoreW).filter(([k,v]) => v > 0 && k in SCORE_DEFAULT);
   for(const p of players){
     const Wp = W.filter(([k]) => p.comp[k] != null); // ohne KI-Bewertung: Baustein auslassen
@@ -895,7 +906,6 @@ function computeScores(){
     p.kiDelta = kiDelta(p);
     p.score = Math.max(0, Math.min(100, p.scoreBase + (p.kiDelta || 0)));
   }
-  computePast();
 }
 /* ---------- KI-Bot ---------- */
 let kiData = { ratings:{}, meta:{} };
@@ -907,7 +917,7 @@ function kiOf(p){ const r = kiData.ratings[p.id]; return r && Date.now() - r.ts 
 function kiDelta(p){
   const r = kiOf(p); if(!r || !(r.v >= 2)) return null;
   let d = r.b != null ? r.r - r.b : r.r - p.scoreBase;
-  d = Math.min(15, d);
+  d = Math.max(-8, Math.min(10, d)); // nur Feinschliff: Verletzungen/Sperren stecken in Prognose und xMin
   // Widerspricht die KI den offiziellen Daten (fit gemeldet, spielt regelmässig), höchstens −10
   const sp = (sleeper.spByFpl || {})[p.id];
   if(p.status === 'a' && !(sp && sp.injury_status) && (p.minL5 || 0) >= 45) d = Math.max(-10, d);
@@ -1964,10 +1974,11 @@ let pvId = null, pvPushed = false;
 function compWhy(p, k){
   const i = p.inv;
   switch(k){
-    case 'form': return p.l10games ? `Ø ${fmt(p.l10,1)} Pkt in seinen letzten ${p.l10games} Einsätzen${p.missed ? ` (${p.missed} verpasste Spiele zählen nicht als 0)` : ''}` : `Ø ${fmt(p.l10,1)} Pkt pro Spiel`;
+    case 'form': return (p.formPrior != null ? `mit Klasse geglättet (erwartet ${fmt(p.formPrior,1)} Pkt/Spiel) · ` : '') + (p.l10games ? `Ø ${fmt(p.l10,1)} Pkt in seinen letzten ${p.l10games} Einsätzen${p.missed ? ` (${p.missed} verpasste Spiele zählen nicht als 0)` : ''}` : `Ø ${fmt(p.l10,1)} Pkt pro Spiel`);
     case 'eff': return p.prior ? `${fmt(p.pts90,1)} Pkt/90 diese Saison (${p.minutes} Min.) · Vorsaisons (${p.prior.season}, ${p.prior.w} %): ${fmt(p.prior.pts90,1)} Pkt/90 → diese Saison zählt ${Math.round(p.effW*100)}%` : `${fmt(p.pts90,1)} Pkt pro 90 Min.${p.minutes < 600 ? ' (wenig Minuten, keine PL-Vorsaison)' : ''}`;
     case 'xs': return `${fmt(p.xpts90,1)} erwartete Pkt pro 90 (aus xG/xA)${p.prior && p.prior.xpts90 != null ? ` · Vorsaisons ${fmt(p.prior.xpts90,1)}` : ''}`;
-    case 'min': return `Ø ${Math.round(p.minL5)} Min. in den letzten 5 · Startelf in ${Math.round((p.startRate||0)*100)}% der Spiele`;
+    case 'min': return `Ø ${Math.round(p.minPerApp||0)} Min. pro Einsatz · ${p.apps ?? '–'} Einsätze${p.hurt ? ' · aktuell verletzt/gesperrt – Pausen zählen nicht' : ''}`;
+    case 'klasse': return p.past && p.past.length ? p.past.map(x => `${x.season} ${x.score}`).join(' · ') + ' (60/30/10)' : 'keine Vorsaison-Daten';
     case 'inv': return i ? (p.pos === 'GKP' ? `${fmt(i.p90,0)} Pässe, ${fmt(i.sv90,1)} Paraden pro 90` :
       `${fmt(i.p90,0)} Pässe · ${fmt(i.kp90,1)} Key Passes · ${fmt(i.sat90,1)} Schüsse · ${fmt(i.def90,1)} Tackles+Int. pro 90`) : 'zu wenig Einsatzminuten für eine Aussage';
     case 'fit': return (p.fitWhy || []).join(' · ');
@@ -2008,7 +2019,7 @@ function playerSheet(p){
   h += `<div style="border-top:1px solid var(--line);padding-top:6px;margin-top:2px">= Rechnung</div><div class="v">${p.scoreBase ?? '–'}</div><div></div>`;
   h += `<div>KI-Feinschliff</div><div class="v" style="color:${kd > 0 ? 'var(--accent)' : kd < 0 ? 'var(--bad)' : 'var(--muted)'}">${kd != null ? sgn(kd) : '–'}</div><div class="why" style="margin-top:0">${kd != null ? esc(kiR.t) : 'noch keine KI-Bewertung – der Bot prüft die News laufend'}</div>`;
   h += `<div><b>= Score</b></div><div class="v">${p.score ?? '–'}</div><div></div>`;
-  h += `</div><div class="nodata" style="margin-top:6px">Jeder Baustein 0–100 im Vergleich zu allen ${POS_PL[p.pos]}; die Rechnung ist der gewichtete Durchschnitt. Die KI verfeinert sie mit News, Fitness und Rolle (−/+).</div></div>`;
+  h += `</div><div class="nodata" style="margin-top:6px">Jeder Baustein 0–100 im Vergleich zu allen ${POS_PL[p.pos]}; die Rechnung ist der gewichtete Durchschnitt. Verletzungen senken den Score nicht – sie stecken in Prognose und xMin. Die KI verfeinert sie mit News, Fitness und Rolle (−/+).</div></div>`;
 
   // Fitness & Gesundheit
   const [acls, alabel] = availBadge(p, sp);
@@ -2164,8 +2175,8 @@ $('scoring').addEventListener('input', e => {
   const k = e.target.dataset.sk; if(!k) return;
   scoring[k] = num(e.target.value); store.set('scoring', scoring); renderAll();
 });
-$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW4', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
-$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW4', scoreW); renderAll(); });
+$('resetScoring').addEventListener('click', () => { scoring = Object.assign({}, DEFAULT_SCORING); store.set('scoring', scoring); scoreW = Object.assign({}, SCORE_DEFAULT); store.set('scoreW5', scoreW); renderScoring(); renderScoreWeights(); renderAll(); });
+$('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw; if(!k) return; scoreW[k] = Math.max(0, num(e.target.value)); store.set('scoreW5', scoreW); renderAll(); });
 $('meSel').addEventListener('change', e => {
   sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); store.set('me', sleeper.me);
   const u = new URL(location.href); if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me'); history.replaceState(null,'',u);
