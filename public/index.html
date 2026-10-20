@@ -2059,7 +2059,7 @@ document.addEventListener('dblclick', e => { if(e.target.closest('[data-fav]')){
 document.addEventListener('click', e => { const c = e.target.closest('.pchip[data-pid]'); if(c) openPlayer(+c.dataset.pid); });
 
 /* ---------- Beste Aufstellung (Optimierer) ---------- */
-// Rechnet mit unserer Prognose (Spalte «Prognose»: Ø erwartete Punkte pro Spiel der nächsten 4 Spiele, 40/30/20/10).
+// Rechnet mit unserer Prognose für das Spiel des nächsten Spieltags (= «Nächste Spiele – Prognose» im Profil bzw. xFP).
 // Wer im Spieltag kein Spiel hat, zählt 0. Bei Gleichstand entscheidet unser Score (Qualität inkl. KI-Feinschliff).
 const SLP_FROM_FPL = { GKP:'GK', DEF:'D', MID:'M', FWD:'F' };
 const SLOT_DE = { F:'STU', M:'MIT', D:'VER', GK:'TW' };
@@ -2095,7 +2095,7 @@ function gwFixture(p, gw){ return (allFixtures || []).filter(f => f.event === gw
 const koTime = f => f && f.kickoff_time ? Date.parse(f.kickoff_time) : null;
 const koStr = t => t ? new Date(t).toLocaleString('de-CH', { weekday:'short', hour:'2-digit', minute:'2-digit' }).replace(',', '') : '–';
 // erwartete Punkte im Spieltag gw nach unserer Wertung (own = ohne Sleeper-Anteil)
-function gwValue(p, gw){ const n = (p.progParts || []).filter(x => x.gw === gw).length; return n ? (p.prog || 0) * n : 0; } // Doppelspieltag zählt doppelt
+function gwValue(p, gw){ return (p.progParts || []).filter(x => x.gw === gw).reduce((t,x) => t + x.pts, 0); } // Doppelspieltag zählt doppelt
 const progOf = p => p.prog ?? 0;
 // Ungarische Methode: optimale Zuordnung Spieler → Slots (maximiert die erwarteten Punkte)
 function hungarian(cost){
@@ -2232,24 +2232,24 @@ function renderLineup(){
   const formation = `${cnt.D}-${cnt.M}-${cnt.F}`;
   let h = `<div class="lnhead"><div><h2 style="margin:0">Beste Aufstellung GW ${gw}</h2>
     <div class="lnform">Formation <b>${formation}</b></div>
-    <div class="nodata">Werte = unsere Prognose (wie Spalte «Prognose»: Ø erwartete Punkte pro Spiel, nächste 4 Spiele gewichtet 40/30/20/10, inkl. Gegner, Einsatzchance, Form) · ohne Spiel in GW ${gw} = 0 · Stand ${new Date().toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}</div></div>
+    <div class="nodata">Werte = unsere Prognose nur für das Spiel in GW ${gw} (wie im Profil unter «Nächste Spiele – Prognose» bzw. Spalte xFP: inkl. Gegner, Einsatzchance, Form) · ohne Spiel = 0 · Stand ${new Date().toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}</div></div>
     <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
   // Spielfeld: klare Formation (Sturm oben, Torwart unten)
   const fxShort = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')}`; };
   const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${favs.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span></div>`;
   const LINE_DE = { F:'Sturm', M:'Mittelfeld', D:'Abwehr', GK:'Tor' };
-  h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">Prognose ${fmt(tot,1)}</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
+  h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">Prognose GW ${gw}: ${fmt(tot,1)}</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
     <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
   // Wechsel über freie Spieler
   h += `<div class="lnsec"><h3><span>Wechsel über freie Spieler</span><select id="lnMoves" title="höchstens so viele Wechsel vorschlagen">${[0,1,2,3].map(n => `<option value="${n}"${n === maxMoves ? ' selected' : ''}>${n ? 'max. ' + n : 'keine'}</option>`).join('')}</select></h3>`;
   if(r.moves.length){
     h += r.moves.map((m, i) => { const w = r.waiverUntil(m.f);
       return `<div class="lnmove"><div><b>${i + 1}.</b> ➕ <b class="p-${m.f.pos}">${esc(m.f.name)}</b> holen${m.d ? ` · ➖ <b>${esc(m.d.name)}</b> abgeben` : ' (freier Kaderplatz)'} <span class="lngain">+${fmt(m.gain,1)} Pkt</span></div>
-        <div class="nodata">${sub(m.f)} · Prognose ${fmt(progOf(m.f),1)}${m.d ? ' statt ' + fmt(progOf(m.d),1) : ''} · ${w ? `⏳ auf Waiver bis ${koStr(w)} – nur per Claim` : '✅ sofort holbar'}</div></div>`; }).join('');
+        <div class="nodata">${sub(m.f)} · Prognose nächste 4 Spiele ${fmt(progOf(m.f),1)}${m.d ? ' statt ' + fmt(progOf(m.d),1) : ''} · ${w ? `⏳ auf Waiver bis ${koStr(w)} – nur per Claim` : '✅ sofort holbar'}</div></div>`; }).join('');
   } else h += `<div class="nodata">${maxMoves ? `Kein freier Spieler bringt mehr als 0.4 Punkte – dein Kader ist für GW ${gw} schon optimal${favs.size ? ' (★-Favoriten werden nie abgegeben)' : ''}.` : 'Wechsel ausgeschaltet – nur dein Kader.'}</div>`;
   h += `</div>`;
   // Startelf
-  h += `<div class="lnsec"><h3><span>So in Sleeper eintragen</span><span class="nodata" style="text-transform:none;letter-spacing:0">Slot · Prognose</span></h3><table class="lntab"><tbody>` + xiRows.map(x => {
+  h += `<div class="lnsec"><h3><span>So in Sleeper eintragen</span><span class="nodata" style="text-transform:none;letter-spacing:0">Slot · Prognose GW ${gw}</span></h3><table class="lntab"><tbody>` + xiRows.map(x => {
     if(!x.p) return `<tr><td class="l lnslot">${slotLabel(x.slot)}</td><td class="l nodata">leer – kein passender Spieler</td><td></td></tr>`;
     const tag = x.locked ? '<span class="lntag lock">🔒 angepfiffen</span>' : adds.has(x.p.id) ? '<span class="lntag add">➕ neu holen</span>' : !curIds.has(x.p.id) ? '<span class="lntag up">⬆ rein</span>' : '';
     return `<tr data-pid="${x.p.id}"><td class="l lnslot">${slotLabel(x.slot)}</td><td class="l">${pl(x.p)} ${tag}<div class="sub">${sub(x.p)}</div></td><td><b>${fmt(x.val,1)}</b></td></tr>`;
