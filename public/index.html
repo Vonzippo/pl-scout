@@ -218,6 +218,8 @@ td.muted{color:var(--muted)}
 .lnlegend{margin-top:6px}.lnlegend .lg{display:inline-block;width:10px;height:10px;border-radius:3px;margin:0 3px -1px 8px}.lnlegend .lg:first-child{margin-left:0}
 .lnlegend .lg.add{border:2px solid #37e39b}.lnlegend .lg.up{border:2px solid #5aa9ff}
 @media(max-width:640px){.prow{gap:4px}.pchip{padding:4px 2px}.pchip b{font-size:14px}.pchip .pcn{font-size:11px}}
+.lncap{font-size:13px;margin:0 0 8px;color:var(--muted)}.lncap b{color:var(--text)}.lncap.over{color:#ff9a9a}
+.lnmove.warn{border-left-color:#ff9a9a}
 .lngain{color:var(--accent);font-weight:700;white-space:nowrap;margin-left:4px}
 .lnfoot{margin-top:16px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px}
 @media(max-width:640px){.lnkpi{width:100%}.lnkpi div{flex:1;min-width:0;padding:6px 4px}.lnkpi b{font-size:16px}}
@@ -2075,8 +2077,7 @@ function slotAllows(slot){
   return out;
 }
 const slotLabel = sl => sl.endsWith('_FLEX') ? slotAllows(sl).map(x => SLOT_DE[x] || x).join('/') : (SLOT_DE[sl] || sl);
-function isOut(p){
-  if(sleeper.reserveByFpl && sleeper.reserveByFpl.has(p.id)) return true;
+function isOut(p){ // fällt aus (Verletzung/Sperre) – IR allein zählt nicht: wer wieder fit ist, muss aus IR zurück
   if(['i','s','u','n'].includes(p.status) || p.chance === 0) return true;
   const sp = (sleeper.spByFpl || {})[p.id], st = sp && sp.injury_status ? String(sp.injury_status).toLowerCase() : '';
   if(['out','ir','sus','na'].includes(st)){
@@ -2175,10 +2176,27 @@ function optimizeLineup(maxMoves){
   const faSet = new Set();
   for(const pos of ['F','M','D','GK']) faAll.filter(p => slPos(p).includes(pos)).sort((a,b) => gwValue(b, gw) - gwValue(a, gw)).slice(0, 12).forEach(p => faSet.add(p));
   const fa = [...faSet].filter(p => { const w = waiverUntil(p), f = fxOf(p); return !w || !f || w < koTime(f); });
-  let pool = [...active], cur = evalPool(pool);
-  const ownOnly = cur, moves = [], added = new Set();
+  // Kaderplätze: alle Sleeper-Spieler ausser IR zählen – auch solche, die keinem PL-Spieler zugeordnet werden konnten
+  const resSids = new Set((myR && myR.reserve) || []);
+  const pidOf = sid => sleeper.fplBySleeper[sid] ?? sleeper.matchPid(sid);
+  const unmatched = ((myR && myR.players) || []).filter(sid => !resSids.has(sid) && pidOf(sid) == null).length;
+  const healthyIR = active.filter(p => reserve.has(p.id)); // wieder fit → muss aus IR zurück und braucht einen Kaderplatz
   const outOnRoster = out.filter(p => !reserve.has(p.id)).length; // verletzt, aber nicht auf IR → belegt einen Kaderplatz
-  const freeSpots = () => Math.max(0, capacity - pool.length - outOnRoster);
+  let pool = [...active], cur = evalPool(pool);
+  const used = () => pool.length + outOnRoster + unmatched;
+  const freeSpots = () => capacity - used();
+  // Kader über dem Maximum (z. B. Spieler kommt aus IR zurück) → zuerst den Spieler abgeben, der am wenigsten fehlt
+  const forced = [];
+  while(freeSpots() < 0){
+    let best = null;
+    for(const d of pool.filter(p => !favs.has(p.id) && !lockedOf(p))){
+      const r2 = evalPool(pool.filter(x => x !== d)), loss = cur.total - r2.total, lt = progOf(d) + (d.score || 0) / 20;
+      if(!best || loss < best.loss - 0.05 || (Math.abs(loss - best.loss) <= 0.05 && lt < best.lt)) best = { d, loss, r: r2, lt };
+    }
+    if(!best) break;
+    forced.push(best); pool = pool.filter(x => x !== best.d); cur = best.r;
+  }
+  const ownOnly = cur, moves = [], added = new Set();
   for(let step = 0; step < maxMoves; step++){
     let best = null;
     const drops = pool.filter(p => !favs.has(p.id) && !lockedOf(p) && !added.has(p.id));
@@ -2201,9 +2219,11 @@ function optimizeLineup(maxMoves){
   }
   const lockedTotal = lockedStart.reduce((t,x) => t + valOf(x.p), 0);
   // IR-Hinweis: verletzter Spieler, der noch einen Kaderplatz belegt, obwohl ein IR-Platz frei ist
-  const irFree = Math.max(0, (+(sleeper.leagueSettings || {}).reserve_slots || 0) - ((myR && myR.reserve) || []).length);
+  const irSlots = +(sleeper.leagueSettings || {}).reserve_slots || 0, irUsed = resSids.size - healthyIR.length;
+  const irFree = Math.max(0, irSlots - irUsed);
   const irTips = irFree ? out.filter(p => !reserve.has(p.id)).slice(0, irFree) : [];
-  return { gw, startSlots, cur, ownOnly, curStart, curTotal, moves, out, pool, lockedStart, lockedTotal, waiverUntil, valOf, lockedOf, fxOf, irTips };
+  const cap = { capacity, used: used(), free: freeSpots(), irSlots, irUsed, unmatched };
+  return { gw, startSlots, cur, ownOnly, curStart, curTotal, moves, forced, cap, healthyIR, out, pool, lockedStart, lockedTotal, waiverUntil, valOf, lockedOf, fxOf, irTips };
 }
 function renderLineup(){
   const el = $('lineupBody'); if(!el || $('viewLineup').hidden) return;
@@ -2242,6 +2262,12 @@ function renderLineup(){
     <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
   // Wechsel über freie Spieler
   h += `<div class="lnsec"><h3><span>Wechsel über freie Spieler</span><select id="lnMoves" title="höchstens so viele Wechsel vorschlagen">${[0,1,2,3].map(n => `<option value="${n}"${n === maxMoves ? ' selected' : ''}>${n ? 'max. ' + n : 'keine'}</option>`).join('')}</select></h3>`;
+  const c = r.cap;
+  h += `<div class="lncap${c.used > c.capacity ? ' over' : ''}">Kader nach den Wechseln: <b>${c.used} / ${c.capacity}</b> Plätze · IR ${c.irUsed} / ${c.irSlots}${c.used > c.capacity ? ' · ⚠️ über dem Maximum – bitte einen Spieler abgeben (★-Favoriten schlägt die Seite nie vor)' : c.free > 0 ? ` · ${c.free} Platz frei` : ' · voll – jeder Zuzug braucht eine Abgabe'}${c.unmatched ? ` · inkl. ${c.unmatched} Spieler ohne PL-Zuordnung` : ''}</div>`;
+  if(r.forced.length){
+    const why = [...r.healthyIR.map(p => `${esc(p.name)} ist wieder fit und muss aus IR zurück`), ...(c.unmatched ? [`${c.unmatched} Spieler ohne PL-Zuordnung belegt einen Platz`] : [])].join(' · ');
+    h += `<div class="nodata" style="margin-bottom:6px">Sonst wäre der Kader über dem Maximum${why ? ': ' + why : ''}.</div>` + r.forced.map(x => `<div class="lnmove warn"><div>➖ <b>${esc(x.d.name)}</b> abgeben (Pflicht)</div><div class="nodata">${sub(x.d)} · kostet ${fmt(x.loss,1)} Pkt in GW ${gw}</div></div>`).join('');
+  }
   if(r.moves.length){
     h += r.moves.map((m, i) => { const w = r.waiverUntil(m.f);
       return `<div class="lnmove"><div><b>${i + 1}.</b> ➕ <b class="p-${m.f.pos}">${esc(m.f.name)}</b> holen${m.d ? ` · ➖ <b>${esc(m.d.name)}</b> abgeben` : ' (freier Kaderplatz)'} <span class="lngain">+${fmt(m.gain,1)} Pkt</span></div>
@@ -2257,12 +2283,13 @@ function renderLineup(){
   // Bank
   const bench = r.pool.filter(p => !inXI.has(p.id)).sort((a,b) => r.valOf(b) - r.valOf(a));
   h += `<div class="lnsec"><h3><span>Bank</span></h3><table class="lntab"><tbody>` + (bench.map(p => `<tr data-pid="${p.id}"><td class="l">${pl(p)}${curIds.has(p.id) ? ' <span class="lntag down">⬇ raus</span>' : ''}${r.lockedOf(p) ? ' <span class="lntag lock">🔒</span>' : ''}<div class="sub">${sub(p)}</div></td><td><b>${fmt(r.valOf(p),1)}</b></td></tr>`).join('') || '<tr><td class="l nodata">–</td></tr>') + `</tbody></table></div>`;
-  const dropped = r.moves.filter(m => m.d).map(m => m.d);
+  const dropped = [...r.forced.map(x => x.d), ...r.moves.filter(m => m.d).map(m => m.d)];
   if(dropped.length) h += `<div class="lnsec"><h3><span>Abgeben</span></h3><table class="lntab"><tbody>${dropped.map(p => `<tr data-pid="${p.id}"><td class="l">➖ ${pl(p)}<div class="sub">${sub(p)}</div></td><td><b>${fmt(r.valOf(p),1)}</b></td></tr>`).join('')}</tbody></table></div>`;
   if(r.out.length) h += `<div class="lnsec"><h3><span>Nicht berücksichtigt (Out / IR)</span></h3><table class="lntab"><tbody>${r.out.map(p => { const sp = (sleeper.spByFpl || {})[p.id], ret = sp && sp.metadata && sp.metadata.soccer_injury_return_date;
     return `<tr data-pid="${p.id}"><td class="l">${pl(p)}<div class="sub">${esc(teams[p.teamId]?.short || '')} · ${esc(outWhy(p))}${ret && Date.parse(ret) > Date.now() ? ' · zurück ca. ' + fmtDay(ret) : ''}</div></td><td class="nodata">–</td></tr>`; }).join('')}</tbody></table></div>`;
   // Hinweise
   const tips = [];
+  for(const p of r.healthyIR) tips.push(`<b>${esc(p.name)}</b> ist wieder fit – in Sleeper aus IR holen (braucht einen Kaderplatz, ist oben schon eingerechnet).`);
   for(const p of r.irTips) tips.push(`<b>${esc(p.name)}</b> fällt aus, belegt aber einen Kaderplatz – auf IR setzen, dann ist ein Platz frei für einen freien Spieler.`);
   for(const x of r.cur.assign){
     if(!x.c) continue; const p = x.c.p;
