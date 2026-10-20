@@ -1,6 +1,6 @@
 // API für KI-Bewertungen: lesen, Beobachtungsliste setzen, fällige Spieler, Ergebnisse speichern
 import type { Config } from "@netlify/functions";
-import { loadRatings, saveWatch, dueList, mergeRatings, noteError, takeQuota, loadMemory, updateMemory } from "../lib/kistore.ts";
+import { loadRatings, saveWatch, dueList, mergeRatings, noteError, takeQuota, loadMemory, updateMemory, loadFavs, saveFavs } from "../lib/kistore.ts";
 
 const json = (status: number, body: unknown, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...extra } });
@@ -79,6 +79,14 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn ni
     } catch (e: any) { return json(200, { ok: false, reason: String(e?.message || e).slice(0, 120) }); }
   }
 
+  // Favoriten: lesen und speichern (geräteübergreifend)
+  if (path.endsWith("/fav")) {
+    const k = String(url.searchParams.get("k") || "");
+    if (!/^[0-9a-z_-]{3,60}$/i.test(k)) return json(400, { error: "ungültig" });
+    if (req.method === "GET") return json(200, { ids: await loadFavs(k) }, { "cache-control": "no-store" });
+    if (req.method === "POST") { const body: any = await req.json().catch(() => ({})); return json(200, { ids: await saveFavs(k, Array.isArray(body?.ids) ? body.ids.map(Number) : []) }); }
+  }
+
   // Gedächtnis: lesen (Seite + Coach), Notiz löschen (Seite), Notizen ändern (nur Coach mit Geheimnis)
   if (path.endsWith("/memory")) {
     const k = String(url.searchParams.get("k") || "");
@@ -98,4 +106,4 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn ni
   return json(404, { error: "unbekannt" });
 };
 
-export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota", "/api/ki/memory", "/api/ki/remember"] };
+export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota", "/api/ki/memory", "/api/ki/remember", "/api/ki/fav"] };

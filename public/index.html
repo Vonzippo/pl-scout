@@ -180,6 +180,47 @@ td.muted{color:var(--muted)}
 .cpbox tr.cpzero td{opacity:.55}
 .pltab td[data-grp]{cursor:zoom-in}
 @media(max-width:640px){.cpop{padding:0;align-items:flex-end}.cpbox{border-radius:14px 14px 0 0;max-height:85vh;overflow-y:auto;border:0}}
+.fav{background:none;border:0;padding:0 3px 0 0;font-size:15px;line-height:1;color:var(--muted);cursor:pointer;vertical-align:-1px}
+.fav.on{color:#ffd166}
+.lineup h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lineup h3 select{font-size:12px;padding:3px 6px;text-transform:none;letter-spacing:0}
+.lnhead{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.lnkpi{display:flex;gap:8px}
+.lnkpi div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 10px;text-align:center;min-width:86px}
+.lnkpi b{display:block;font-size:19px;font-variant-numeric:tabular-nums}
+.lnkpi div:first-child b{color:var(--accent)}
+.lnkpi small{color:var(--muted);font-size:11px}
+.lnsec{margin-top:16px}
+.lnmove{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:13px}
+.lntab td{padding:6px 6px;font-size:13px;vertical-align:top}
+.lntab td.lnslot{color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap;width:1%}
+.lntab{width:100%}
+.lntab td{white-space:normal}
+.lntab td:last-child{width:1%;white-space:nowrap}
+.lntab td .sub{display:block;white-space:normal;font-size:11px;color:var(--muted);margin-top:2px}
+.lntag{display:inline-block;font-size:10px;font-weight:700;border-radius:5px;padding:1px 5px;margin-left:4px;white-space:nowrap}
+.lntag.add{background:#0e2f22;color:#37e39b}.lntag.up{background:#0e2440;color:#5aa9ff}.lntag.down{background:#4a3a1c;color:#ffd99a}.lntag.lock{background:var(--panel2);color:var(--muted)}
+.lnbench{font-size:13px;padding:5px 0;border-bottom:1px solid var(--line)}
+.lnbench b{float:right}
+.lntip{font-size:13px;padding:6px 8px;background:var(--panel2);border-radius:8px;margin-bottom:6px}
+.lnform{font-size:15px;margin:3px 0 2px}
+.lnform b{font-size:22px;color:var(--accent);letter-spacing:.03em;margin-left:4px}
+.pitch{position:relative;max-width:820px;margin:0 auto;padding:4px 6px 10px;border-radius:12px;background:repeating-linear-gradient(180deg,#14532d 0 46px,#176337 46px 92px);border:1px solid #1f7a45;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.pitch:before{content:'';position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border:1px solid rgba(255,255,255,.2);border-radius:50%}
+.pitch:after{content:'';position:absolute;left:0;right:0;top:50%;border-top:1px solid rgba(255,255,255,.2)}
+.prow{display:flex;justify-content:center;align-items:center;gap:6px;position:relative;z-index:1;min-height:58px;padding:13px 0 0}
+.pline{position:absolute;left:4px;top:0;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.pchip{flex:0 1 92px;min-width:0;background:rgba(8,18,13,.85);border:1px solid rgba(255,255,255,.22);border-radius:9px;padding:5px 4px;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.pchip b{font-size:15px;color:#fff;font-variant-numeric:tabular-nums}
+.pchip .pcn{font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pitch .pcf{font-size:10px;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pchip.add{border:2px solid #37e39b}.pchip.up{border:2px solid #5aa9ff}.pchip.lock{opacity:.72}
+.lnlegend{margin-top:6px}.lnlegend .lg{display:inline-block;width:10px;height:10px;border-radius:3px;margin:0 3px -1px 8px}.lnlegend .lg:first-child{margin-left:0}
+.lnlegend .lg.add{border:2px solid #37e39b}.lnlegend .lg.up{border:2px solid #5aa9ff}
+@media(max-width:640px){.prow{gap:4px}.pchip{padding:4px 2px}.pchip b{font-size:14px}.pchip .pcn{font-size:11px}}
+.lngain{color:var(--accent);font-weight:700;white-space:nowrap;margin-left:4px}
+.lnfoot{margin-top:16px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px}
+@media(max-width:640px){.lnkpi{width:100%}.lnkpi div{flex:1;min-width:0;padding:6px 4px}.lnkpi b{font-size:16px}}
 .rchips{white-space:normal}
 .rchip{display:inline-block;font-size:11px;padding:1px 6px;margin:1px 3px 1px 0;border-radius:6px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap}
 .rchip.sp{color:var(--warn);border-color:#5a4520}
@@ -307,7 +348,11 @@ body.noscroll{overflow:hidden}
   <div class="card" id="dataPanel" hidden style="margin-bottom:12px"></div>
   </details>
 
-  <div class="tabs" id="tabs"><button data-tab="players" class="on">Spieler</button><button data-tab="teams">Teams</button><button data-tab="coach">✨ KI-Coach</button></div>
+  <div class="tabs" id="tabs"><button data-tab="players" class="on">Spieler</button><button data-tab="lineup">🏆 Aufstellung</button><button data-tab="teams">Teams</button><button data-tab="coach">✨ KI-Coach</button></div>
+
+  <section id="viewLineup" hidden>
+    <div class="card lineup"><div id="lineupBody" class="empty">Lade deine Sleeper-Liga und wähle oben, wer du bist.</div></div>
+  </section>
 
   <section id="viewTeams" hidden>
     <details class="card" id="plCard" open style="margin-bottom:12px">
@@ -605,16 +650,17 @@ function computeXfp(){
     p.slp = sleeper.proj && sleeper.proj[p.id] != null ? sleeper.proj[p.id] * ((sleeper.projCal || {})[p.pos] || 1) : undefined;
     // Prognose: erwartete Punkte der nächsten 4 Spiele, gewichtet 40/30/20/10
     const PW = [0.4, 0.3, 0.2, 0.1];
-    p.progParts = models.map((x, i) => ({ gw: x.f.gw, opp: x.f.opp, home: x.f.home, w: PW[i], pts: 0.65 * expPts(x.m) + 0.35 * formPart,
-      tore: x.m.lamFor, gegentore: x.m.lamAg, cs: Math.exp(-x.m.lamAg) }));
+    p.progParts = models.map((x, i) => { const v = 0.65 * expPts(x.m) + 0.35 * formPart; return { gw: x.f.gw, opp: x.f.opp, home: x.f.home, w: PW[i], pts: v, own: v,
+      tore: x.m.lamFor, gegentore: x.m.lamAg, cs: Math.exp(-x.m.lamAg) }; });
     const finishProg = () => {
       const ws = p.progParts.reduce((t,x) => t + x.w, 0);
       p.prog = ws ? p.progParts.reduce((t,x) => t + x.w * x.pts, 0) / ws : 0;
+      p.progOwn = ws ? p.progParts.reduce((t,x) => t + x.w * (x.own ?? x.pts), 0) / ws : 0; // unsere Wertung ohne Sleeper-Projektion
       p.proj = p.prog;
     };
     // Simulation nächster Spieltag
     const nextM = models.filter(x => x.f.gw === nextGw);
-    if(!nextM.length){ p.xfp = 0; p.floor = 0; p.ceil = 0; finishProg(); continue; }
+    if(!nextM.length){ p.xfp = 0; p.xfpOwn = 0; p.floor = 0; p.ceil = 0; finishProg(); continue; }
     const rnd = mulberry(p.id * 7919 + nextGw), N = 400, out = new Array(N);
     for(let i = 0; i < N; i++){
       let pts = 0;
@@ -638,13 +684,14 @@ function computeXfp(){
     out.sort((a,b)=>a-b);
     const model = out.reduce((a,b)=>a+b,0) / N;
     p.xfp = 0.65 * model + 0.35 * formPart;
+    p.xfpOwn = p.xfp; // unsere Wertung ohne Sleeper-Projektion (für die Aufstellung)
     // Prognose von Sleeper (Profi-Projektion, Liga-Wertung) zu 35 % einmischen, falls vorhanden
     if(p.slp != null) p.xfp = 0.65 * p.xfp + 0.35 * p.slp;
     const shift = p.xfp - model;
     p.floor = out[Math.floor(N * 0.15)] + shift; p.ceil = out[Math.floor(N * 0.85)] + shift;
     // nächstes Spiel in der Prognose = xFP (inkl. Sleeper-Projektion)
     const firstNext = p.progParts.filter(x => x.gw === nextGw);
-    firstNext.forEach(x => { x.pts = p.xfp / firstNext.length; });
+    firstNext.forEach(x => { x.pts = p.xfp / firstNext.length; x.own = p.xfpOwn / firstNext.length; });
     finishProg();
   }
 }
@@ -716,7 +763,10 @@ function newsValue(p){
   else if(p.status === 'd') v = p.chance != null ? p.chance/100 : 0.5;
   else v = p.news ? 0.9 : 1;
   const sl = sleeper.slByFpl && sleeper.slByFpl[p.id];
-  if(sl){ const s = sl.toLowerCase(); if(s === 'out' || s === 'ir' || s === 'sus') v = Math.min(v, 0); else if(s.startsWith('quest') || s === 'doubtful') v = Math.min(v, s==='doubtful'?0.25:0.5); }
+  const spx = sleeper.spByFpl && sleeper.spByFpl[p.id], ret = spx && spx.metadata && spx.metadata.soccer_injury_return_date;
+  const stale = sl && ret && Date.parse(ret) < Date.now() && p.status === 'a';
+  if(stale) v = Math.min(v, 0.7); // Rückkehrdatum vorbei, PL meldet fit → wahrscheinlich zurück, aber noch nicht sicher in der Startelf
+  else if(sl){ const s = sl.toLowerCase(); if(s === 'out' || s === 'ir' || s === 'sus') v = Math.min(v, 0); else if(s.startsWith('quest') || s === 'doubtful') v = Math.min(v, s==='doubtful'?0.25:0.5); }
   return v;
 }
 // Einbindung: wie oft der Spieler angespielt wird bzw. am Ball ist (Sleeper-Stats, letzte bis zu 10 Spiele)
@@ -1249,9 +1299,11 @@ async function loadFPL(){
   for(const t of boot.teams) teams[t.id] = { name:t.name, short:t.short_name };
   const ev = boot.events || [];
   const next = ev.find(e => e.is_next) || ev.find(e => !e.finished);
-  nextGw = next ? next.id : 39;
+  // Nächster Spieltag = erster Spieltag mit einem noch nicht angepfiffenen Spiel (läuft ein Spieltag, bleibt er aktiv)
+  const up = (fixtures || []).filter(f => f.event != null && !f.started && !f.finished && f.kickoff_time && Date.parse(f.kickoff_time) > Date.now()).map(f => f.event);
+  nextGw = up.length ? Math.min(...up) : (next ? next.id : 39);
   gamesPlayed = Math.max(1, ev.filter(e => e.finished).length);
-  $('gwinfo').textContent = next ? `Nächster Spieltag: GW ${next.id} · ${gamesPlayed} Spieltage gespielt` : 'Saison beendet';
+  $('gwinfo').textContent = nextGw < 39 || next ? `Nächster Spieltag: GW ${nextGw} · ${gamesPlayed} Spieltage gespielt` : 'Saison beendet';
 
   allFixtures = fixtures;
   fixturesByTeam = {}; playedGwByTeam = {};
@@ -1259,8 +1311,9 @@ async function loadFPL(){
   for(const f of fixtures){
     if(f.event == null) continue;
     if(f.finished){ (playedGwByTeam[f.team_h] ||= {})[f.event] = ((playedGwByTeam[f.team_h]||{})[f.event]||0) + 1; (playedGwByTeam[f.team_a] ||= {})[f.event] = ((playedGwByTeam[f.team_a]||{})[f.event]||0) + 1; continue; }
-    (fixturesByTeam[f.team_h] ||= []).push({ gw:f.event, opp:f.team_a, home:true, d:f.team_h_difficulty });
-    (fixturesByTeam[f.team_a] ||= []).push({ gw:f.event, opp:f.team_h, home:false, d:f.team_a_difficulty });
+    const ko = f.kickoff_time ? Date.parse(f.kickoff_time) : null;
+    (fixturesByTeam[f.team_h] ||= []).push({ gw:f.event, opp:f.team_a, home:true, d:f.team_h_difficulty, ko });
+    (fixturesByTeam[f.team_a] ||= []).push({ gw:f.event, opp:f.team_h, home:false, d:f.team_a_difficulty, ko });
   }
   for(const k in fixturesByTeam) fixturesByTeam[k].sort((a,b)=>a.gw-b.gw);
 
@@ -1314,8 +1367,12 @@ async function loadSleeper(leagueId){
     rosterId: r.roster_id,
     players: (r.players||[]).filter(x => x && x !== '0'),
     starters: (r.starters||[]).filter(x => x && x !== '0'),
+    startersRaw: r.starters || [],
+    reserve: (r.reserve||[]).filter(x => x && x !== '0'),
     st: r.settings || {}
   }));
+  sleeper.rosterPositions = league.roster_positions || [];
+  sleeper.leagueSettings = league.settings || {};
   for(const r of sleeper.rosters) if(!sleeper.users[r.owner]) sleeper.users[r.owner] = 'Team '+r.rosterId;
 
   const ownerBySleeper = {};
@@ -1367,6 +1424,7 @@ async function loadSleeper(leagueId){
     return (matchCache[pid] = ok ? best.id : null);
   };
   sleeper.matchPid = matchPid;
+  sleeper.reserveByFpl = new Set(sleeper.rosters.flatMap(r => r.reserve).map(sid => matchPid(sid)).filter(x => x != null));
   sleeper.leagueId = leagueId; sleeper.leagueName = league.name || ''; sleeper.scoringSettings = league.scoring_settings || null; sleeper.calibrated = false;
   let matched = 0, total = 0;
   sleeper.unmatched = [];
@@ -1466,7 +1524,7 @@ function nameCell(p){
   const o = Object.keys(sleeper.users).length ? ownerOf(p) : undefined;
   const own = o === undefined && !Object.keys(sleeper.users).length ? '' :
     (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
-  return `<div class="nm"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}</div>
+  return `<div class="nm">${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}</div>
     <div class="sub"><b>${esc(teams[p.teamId].short)}</b>${own}<span class="fdr sm">${opp}</span></div>`;
 }
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
@@ -1775,7 +1833,7 @@ function line(p){
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
   const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
   const ki = kiOf(p);
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos}) | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos})${favs.has(p.id) && ownerOf(p) === sleeper.me ? ' ★ FAVORIT (nie abgeben)' : ''} | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}` +
     ((p.progParts||[]).length ? ' | PRO SPIEL: ' + p.progParts.slice(0,2).map(x => `GW${x.gw} ${x.home?'vs':'@'} ${teams[x.opp]?.short||'?'} ${fmt(x.pts,1)} Pkt (Team-Tore ${fmt(x.tore,1)}, Gegentore ${fmt(x.gegentore,1)}, Zu-Null ${Math.round(x.cs*100)}%)`).join('; ') : '');
@@ -1969,7 +2027,256 @@ function renderScoring(){
     Object.keys(DEFAULT_SCORING).map(k =>
     `<label>${LABELS[k]}<input type="number" step="0.1" data-sk="${k}" value="${scoring[k] ?? 0}" ${league ? 'disabled' : ''}></label>`).join('');
 }
-function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); refreshPreview(); renderDataStatus(); }
+function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); renderLineup(); refreshPreview(); renderDataStatus(); }
+
+/* ---------- Favoriten (★ = nie zur Abgabe vorschlagen) ---------- */
+let favs = new Set();
+const favKey = () => sleeper.leagueId ? `${sleeper.leagueId}_${sleeper.me || 'x'}` : '';
+async function loadFavs(){
+  const k = favKey(); if(!k) return;
+  favs = new Set(store.get('fav_' + k) || []);
+  try { const j = await getJSON('/api/ki/fav?k=' + k + '&t=' + Date.now()); favs = new Set(j.ids || []); store.set('fav_' + k, [...favs]); } catch(e){}
+}
+function toggleFav(id){
+  const k = favKey(); if(!k) return;
+  if(favs.has(id)) favs.delete(id); else favs.add(id);
+  store.set('fav_' + k, [...favs]);
+  fetch('/api/ki/fav?k=' + k, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ ids: [...favs] }) }).catch(() => {});
+}
+function favBtn(p){
+  if(!sleeper.me || ownerOf(p) !== sleeper.me) return '';
+  const on = favs.has(p.id);
+  return `<button class="fav${on ? ' on' : ''}" data-fav="${p.id}" title="${on ? 'Favorit – wird nie zur Abgabe vorgeschlagen (antippen = entfernen)' : 'Als Favorit markieren (nie abgeben)'}">${on ? '★' : '☆'}</button>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-fav]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const id = +b.dataset.fav; toggleFav(id);
+  document.querySelectorAll(`[data-fav="${id}"]`).forEach(x => { const on = favs.has(id); x.classList.toggle('on', on); x.textContent = on ? '★' : '☆'; });
+  renderLineup();
+}, true);
+document.addEventListener('dblclick', e => { if(e.target.closest('[data-fav]')){ e.preventDefault(); e.stopPropagation(); } }, true);
+document.addEventListener('click', e => { const c = e.target.closest('.pchip[data-pid]'); if(c) openPlayer(+c.dataset.pid); });
+
+/* ---------- Beste Aufstellung (Optimierer) ---------- */
+// Rechnet nur mit unserer Wertung: erwartete Punkte aus unserem Modell (Liga-Punkteregel, Gegner, Einsatzchance, Form) – ohne Sleeper-Projektion.
+// Bei Gleichstand entscheidet unser Score (Qualität inkl. KI-Feinschliff).
+const SLP_FROM_FPL = { GKP:'GK', DEF:'D', MID:'M', FWD:'F' };
+const SLOT_DE = { F:'STU', M:'MIT', D:'VER', GK:'TW' };
+function slPos(p){
+  const sp = (sleeper.spByFpl || {})[p.id], fp = sp && sp.fantasy_positions;
+  const r = fp && fp.length ? [...new Set(fp.map(x => x === 'G' ? 'GK' : x).filter(x => SLOT_DE[x]))] : [];
+  return r.length ? r : [SLP_FROM_FPL[p.pos]];
+}
+function slotAllows(slot){
+  if(!slot.endsWith('_FLEX')) return [slot];
+  const pre = slot.slice(0, -5), out = [];
+  for(let i = 0; i < pre.length; i++){ if(pre.startsWith('GK', i)){ out.push('GK'); i++; } else out.push(pre[i]); }
+  return out;
+}
+const slotLabel = sl => sl.endsWith('_FLEX') ? slotAllows(sl).map(x => SLOT_DE[x] || x).join('/') : (SLOT_DE[sl] || sl);
+function isOut(p){
+  if(sleeper.reserveByFpl && sleeper.reserveByFpl.has(p.id)) return true;
+  if(['i','s','u','n'].includes(p.status) || p.chance === 0) return true;
+  const sp = (sleeper.spByFpl || {})[p.id], st = sp && sp.injury_status ? String(sp.injury_status).toLowerCase() : '';
+  if(['out','ir','sus','na'].includes(st)){
+    const ret = sp.metadata && sp.metadata.soccer_injury_return_date;
+    const stale = ret && Date.parse(ret) < Date.now() && p.status === 'a'; // Sleeper-Meldung veraltet, PL meldet fit
+    if(!stale) return true;
+  }
+  return false;
+}
+function outWhy(p){
+  if(sleeper.reserveByFpl && sleeper.reserveByFpl.has(p.id)) return 'auf IR';
+  const sp = (sleeper.spByFpl || {})[p.id];
+  return ({ i:'verletzt', s:'gesperrt', u:'nicht verfügbar', n:'nicht verfügbar' })[p.status] || (sp && slStatusDe(sp.injury_status)) || 'fällt aus';
+}
+function gwFixture(p, gw){ return (allFixtures || []).filter(f => f.event === gw && (f.team_h === p.teamId || f.team_a === p.teamId)).sort((a,b) => Date.parse(a.kickoff_time) - Date.parse(b.kickoff_time))[0] || null; }
+const koTime = f => f && f.kickoff_time ? Date.parse(f.kickoff_time) : null;
+const koStr = t => t ? new Date(t).toLocaleString('de-CH', { weekday:'short', hour:'2-digit', minute:'2-digit' }).replace(',', '') : '–';
+// erwartete Punkte im Spieltag gw nach unserer Wertung (own = ohne Sleeper-Anteil)
+function gwValue(p, gw){ return (p.progParts || []).filter(x => x.gw === gw).reduce((t,x) => t + (x.own ?? x.pts), 0); }
+const progOf = p => p.progOwn ?? p.prog ?? 0;
+// Ungarische Methode: optimale Zuordnung Spieler → Slots (maximiert die erwarteten Punkte)
+function hungarian(cost){
+  const n = cost.length, m = cost[0].length, INF = 1e18;
+  const u = new Array(n + 1).fill(0), v = new Array(m + 1).fill(0), pp = new Array(m + 1).fill(0), way = new Array(m + 1).fill(0);
+  for(let i = 1; i <= n; i++){
+    pp[0] = i; let j0 = 0; const minv = new Array(m + 1).fill(INF), used = new Array(m + 1).fill(false);
+    do {
+      used[j0] = true; const i0 = pp[j0]; let delta = INF, j1 = 0;
+      for(let j = 1; j <= m; j++) if(!used[j]){
+        const cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
+        if(cur < minv[j]){ minv[j] = cur; way[j] = j0; }
+        if(minv[j] < delta){ delta = minv[j]; j1 = j; }
+      }
+      for(let j = 0; j <= m; j++){ if(used[j]){ u[pp[j]] += delta; v[j] -= delta; } else minv[j] -= delta; }
+      j0 = j1;
+    } while(pp[j0] !== 0);
+    do { const j1 = way[j0]; pp[j0] = pp[j1]; j0 = j1; } while(j0);
+  }
+  const res = new Array(n).fill(-1);
+  for(let j = 1; j <= m; j++) if(pp[j]) res[pp[j] - 1] = j - 1;
+  return res;
+}
+function bestXI(cands, slots){
+  if(!slots.length) return { total:0, assign:[] };
+  const m = cands.length + slots.length; // zusätzliche Spalten = Slot bleibt leer
+  const cost = slots.map(sl => { const ok = slotAllows(sl), row = new Array(m).fill(0);
+    cands.forEach((c, j) => { row[j] = c.pos.some(x => ok.includes(x)) ? -c.w : 1e6; }); return row; });
+  const a = hungarian(cost);
+  const assign = slots.map((sl, i) => ({ slot: sl, c: a[i] >= 0 && a[i] < cands.length && cost[i][a[i]] < 1e5 ? cands[a[i]] : null }));
+  return { total: assign.reduce((t,x) => t + (x.c ? x.c.val : 0), 0), assign };
+}
+// Kürzlich abgegebene Spieler sind noch auf Waiver (waiver_clear_days)
+let lineupTx = {}, lineupTxAt = 0;
+async function loadLineupTx(){
+  const leg = +(sleeper.leagueSettings || {}).leg || nextGw || 1;
+  try {
+    const arr = (await Promise.all([leg, leg - 1].filter(w => w >= 1).map(w => getJSON(`/api/sl/league/${sleeper.leagueId}/transactions/${w}`).catch(() => [])))).flat();
+    const clearMs = (+(sleeper.leagueSettings || {}).waiver_clear_days || 2) * 864e5, drop = {};
+    for(const t of arr) if(t && t.status === 'complete' && t.drops) for(const sid in t.drops){
+      const until = (t.status_updated || t.created || 0) + clearMs;
+      if(until > Date.now()) drop[sid] = Math.max(drop[sid] || 0, until);
+    }
+    lineupTx = drop;
+  } catch(e){}
+}
+function optimizeLineup(maxMoves){
+  const gw = nextGw, now = Date.now();
+  const allSlots = (sleeper.rosterPositions || []).filter(x => x !== 'IR');
+  const startSlots = allSlots.filter(x => x !== 'BN');
+  const capacity = allSlots.length;
+  const reserve = sleeper.reserveByFpl || new Set();
+  const mine = players.filter(p => ownerOf(p) === sleeper.me);
+  const out = mine.filter(isOut), active = mine.filter(p => !isOut(p));
+  const fxc = new Map(), fxOf = p => { if(!fxc.has(p.id)) fxc.set(p.id, gwFixture(p, gw)); return fxc.get(p.id); };
+  const lockedOf = p => { const f = fxOf(p); return !!(f && (f.started || f.finished || koTime(f) <= now)); };
+  const valOf = p => { const f = fxOf(p); if(f && f.finished){ const r = ((sleeper.real || {})[p.id] || {})[gw]; return r ? r.pts : 0; } return gwValue(p, gw); };
+  const cc = new Map(), cand = p => { if(!cc.has(p.id)){ const val = valOf(p); cc.set(p.id, { p, val, w: val + (p.score || 0) / 1000, pos: slPos(p) }); } return cc.get(p.id); };
+  // aktuell in Sleeper gesetzte Startelf (gleiche Reihenfolge wie roster_positions)
+  const myR = sleeper.rosters.find(r => r.owner === sleeper.me);
+  const raw = (myR && myR.startersRaw) || [];
+  const curStart = startSlots.map((sl, i) => {
+    const sid = raw[i], fid = sid && sid !== '0' ? (sleeper.fplBySleeper[sid] ?? sleeper.matchPid(sid)) : null;
+    return { slot: sl, p: fid != null ? players.find(x => x.id === fid) || null : null };
+  });
+  const curTotal = curStart.reduce((t,x) => t + (x.p && !isOut(x.p) ? valOf(x.p) : 0), 0);
+  // Angepfiffene Starter bleiben fix, angepfiffene Bankspieler können nicht mehr rein
+  const lockedStart = curStart.filter(x => x.p && lockedOf(x.p));
+  const freeSlots = [...startSlots];
+  for(const x of lockedStart){ const i = freeSlots.indexOf(x.slot); if(i >= 0) freeSlots.splice(i, 1); }
+  const lockedIds = new Set(lockedStart.map(x => x.p.id));
+  const evalPool = pool => bestXI(pool.filter(p => !lockedIds.has(p.id) && !lockedOf(p)).map(cand), freeSlots);
+  // Freie Spieler: in keinem Kader, bei Sleeper vorhanden, fit, Spiel noch nicht angepfiffen
+  const owned = new Set(Object.keys(sleeper.ownerByFpl || {}).map(Number));
+  const waiverUntil = p => { const sid = (sleeper.sidByFpl || {})[p.id]; return sid && lineupTx[sid] ? lineupTx[sid] : null; };
+  const faAll = players.filter(p => !owned.has(p.id) && (sleeper.sidByFpl || {})[p.id] && p.status === 'a' && !isOut(p) && !lockedOf(p) && gwValue(p, gw) > 1.5);
+  const faSet = new Set();
+  for(const pos of ['F','M','D','GK']) faAll.filter(p => slPos(p).includes(pos)).sort((a,b) => gwValue(b, gw) - gwValue(a, gw)).slice(0, 12).forEach(p => faSet.add(p));
+  const fa = [...faSet].filter(p => { const w = waiverUntil(p), f = fxOf(p); return !w || !f || w < koTime(f); });
+  let pool = [...active], cur = evalPool(pool);
+  const ownOnly = cur, moves = [], added = new Set();
+  const outOnRoster = out.filter(p => !reserve.has(p.id)).length; // verletzt, aber nicht auf IR → belegt einen Kaderplatz
+  const freeSpots = () => Math.max(0, capacity - pool.length - outOnRoster);
+  for(let step = 0; step < maxMoves; step++){
+    let best = null;
+    const drops = pool.filter(p => !favs.has(p.id) && !lockedOf(p) && !added.has(p.id));
+    const dropOpts = freeSpots() > 0 ? [null, ...drops] : drops;
+    for(const f of fa){
+      if(pool.includes(f)) continue;
+      for(const d of dropOpts){
+        // nie einen längerfristig besseren Spieler abgeben (4-Spiele-Prognose oder klar höherer Score)
+        if(d && (progOf(d) > progOf(f) + 0.3 || (d.score || 0) > (f.score || 0) + 12)) continue;
+        const np = d ? pool.filter(x => x !== d).concat([f]) : pool.concat([f]);
+        const r = evalPool(np), gain = r.total - cur.total;
+        const lt = progOf(f) - (d ? progOf(d) : 0) + ((f.score || 0) - (d ? d.score || 0 : 0)) / 20;
+        if(gain > 0.4 && (!best || gain > best.gain + 0.05 || (Math.abs(gain - best.gain) <= 0.05 && lt > best.lt))) best = { f, d, gain, r, lt };
+      }
+    }
+    if(!best) break;
+    moves.push(best); added.add(best.f.id);
+    pool = best.d ? pool.filter(x => x !== best.d).concat([best.f]) : pool.concat([best.f]);
+    cur = best.r;
+  }
+  const lockedTotal = lockedStart.reduce((t,x) => t + valOf(x.p), 0);
+  // IR-Hinweis: verletzter Spieler, der noch einen Kaderplatz belegt, obwohl ein IR-Platz frei ist
+  const irFree = Math.max(0, (+(sleeper.leagueSettings || {}).reserve_slots || 0) - ((myR && myR.reserve) || []).length);
+  const irTips = irFree ? out.filter(p => !reserve.has(p.id)).slice(0, irFree) : [];
+  return { gw, startSlots, cur, ownOnly, curStart, curTotal, moves, out, pool, lockedStart, lockedTotal, waiverUntil, valOf, lockedOf, fxOf, irTips };
+}
+function renderLineup(){
+  const el = $('lineupBody'); if(!el || $('viewLineup').hidden) return;
+  if(!players.length || !sleeper.rosters.length || !sleeper.me || !(sleeper.rosterPositions || []).length){ el.className = 'empty'; el.innerHTML = 'Lade deine Sleeper-Liga und wähle oben, wer du bist.'; return; }
+  if(Date.now() - lineupTxAt > 10 * 60e3){ lineupTxAt = Date.now(); loadLineupTx().then(renderLineup); }
+  el.className = '';
+  let maxMoves = +(store.get('lineupMoves') ?? 3); if(!(maxMoves >= 0 && maxMoves <= 3)) maxMoves = 3;
+  const r = optimizeLineup(maxMoves), gw = r.gw;
+  const curIds = new Set(r.curStart.filter(x => x.p).map(x => x.p.id));
+  const adds = new Set(r.moves.map(m => m.f.id));
+  const xiRows = [...r.lockedStart.map(x => ({ slot: x.slot, p: x.p, val: r.valOf(x.p), locked: true })),
+    ...r.cur.assign.map(x => ({ slot: x.slot, p: x.c ? x.c.p : null, val: x.c ? x.c.val : 0 }))];
+  xiRows.sort((a,b) => r.startSlots.indexOf(a.slot) - r.startSlots.indexOf(b.slot));
+  const inXI = new Set(xiRows.filter(x => x.p).map(x => x.p.id));
+  const tot = r.cur.total + r.lockedTotal, own = r.ownOnly.total + r.lockedTotal;
+  const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>`;
+  const fxLine = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')} · ${koStr(koTime(f))}`; };
+  const sub = p => `${esc(teams[p.teamId]?.short || '')} · ${slPos(p).join('/')} · ${fxLine(p)} · Score ${p.score != null ? Math.round(p.score) : '–'}`;
+  // Formation zählen (Flex-Slot zählt zur Linie des Spielers)
+  const cnt = { GK:0, D:0, M:0, F:0 };
+  for(const x of xiRows) if(x.p){
+    let line = x.slot;
+    if(x.slot.endsWith('_FLEX')){ const ok = slotAllows(x.slot), fp = SLP_FROM_FPL[x.p.pos], ps = slPos(x.p).filter(y => ok.includes(y)); line = ps.includes(fp) ? fp : (ps[0] || fp); }
+    x.line = line; cnt[line] = (cnt[line] || 0) + 1;
+  }
+  const formation = `${cnt.D}-${cnt.M}-${cnt.F}`;
+  let h = `<div class="lnhead"><div><h2 style="margin:0">Beste Aufstellung GW ${gw}</h2>
+    <div class="lnform">Formation <b>${formation}</b></div>
+    <div class="nodata">Punkte nach unserer Wertung (unser Modell mit eurer Liga-Punkteregel: Gegner, Einsatzchance, Form – ohne Sleeper-Projektion) · Stand ${new Date().toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}</div></div>
+    <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
+  // Spielfeld: klare Formation (Sturm oben, Torwart unten)
+  const fxShort = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')}`; };
+  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${favs.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span></div>`;
+  const LINE_DE = { F:'Sturm', M:'Mittelfeld', D:'Abwehr', GK:'Tor' };
+  h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">${fmt(tot,1)} Pkt erwartet</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
+    <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
+  // Wechsel über freie Spieler
+  h += `<div class="lnsec"><h3><span>Wechsel über freie Spieler</span><select id="lnMoves" title="höchstens so viele Wechsel vorschlagen">${[0,1,2,3].map(n => `<option value="${n}"${n === maxMoves ? ' selected' : ''}>${n ? 'max. ' + n : 'keine'}</option>`).join('')}</select></h3>`;
+  if(r.moves.length){
+    h += r.moves.map((m, i) => { const w = r.waiverUntil(m.f);
+      return `<div class="lnmove"><div><b>${i + 1}.</b> ➕ <b class="p-${m.f.pos}">${esc(m.f.name)}</b> holen${m.d ? ` · ➖ <b>${esc(m.d.name)}</b> abgeben` : ' (freier Kaderplatz)'} <span class="lngain">+${fmt(m.gain,1)} Pkt</span></div>
+        <div class="nodata">${sub(m.f)} · Prognose 4 Spiele ${fmt(progOf(m.f),1)}${m.d ? ' statt ' + fmt(progOf(m.d),1) : ''} · ${w ? `⏳ auf Waiver bis ${koStr(w)} – nur per Claim` : '✅ sofort holbar'}</div></div>`; }).join('');
+  } else h += `<div class="nodata">${maxMoves ? `Kein freier Spieler bringt mehr als 0.4 Punkte – dein Kader ist für GW ${gw} schon optimal${favs.size ? ' (★-Favoriten werden nie abgegeben)' : ''}.` : 'Wechsel ausgeschaltet – nur dein Kader.'}</div>`;
+  h += `</div>`;
+  // Startelf
+  h += `<div class="lnsec"><h3><span>So in Sleeper eintragen</span><span class="nodata" style="text-transform:none;letter-spacing:0">Slot · Pkt GW ${gw}</span></h3><table class="lntab"><tbody>` + xiRows.map(x => {
+    if(!x.p) return `<tr><td class="l lnslot">${slotLabel(x.slot)}</td><td class="l nodata">leer – kein passender Spieler</td><td></td></tr>`;
+    const tag = x.locked ? '<span class="lntag lock">🔒 angepfiffen</span>' : adds.has(x.p.id) ? '<span class="lntag add">➕ neu holen</span>' : !curIds.has(x.p.id) ? '<span class="lntag up">⬆ rein</span>' : '';
+    return `<tr data-pid="${x.p.id}"><td class="l lnslot">${slotLabel(x.slot)}</td><td class="l">${pl(x.p)} ${tag}<div class="sub">${sub(x.p)}</div></td><td><b>${fmt(x.val,1)}</b></td></tr>`;
+  }).join('') + `</tbody></table></div>`;
+  // Bank
+  const bench = r.pool.filter(p => !inXI.has(p.id)).sort((a,b) => r.valOf(b) - r.valOf(a));
+  h += `<div class="lnsec"><h3><span>Bank</span></h3><table class="lntab"><tbody>` + (bench.map(p => `<tr data-pid="${p.id}"><td class="l">${pl(p)}${curIds.has(p.id) ? ' <span class="lntag down">⬇ raus</span>' : ''}${r.lockedOf(p) ? ' <span class="lntag lock">🔒</span>' : ''}<div class="sub">${sub(p)}</div></td><td><b>${fmt(r.valOf(p),1)}</b></td></tr>`).join('') || '<tr><td class="l nodata">–</td></tr>') + `</tbody></table></div>`;
+  const dropped = r.moves.filter(m => m.d).map(m => m.d);
+  if(dropped.length) h += `<div class="lnsec"><h3><span>Abgeben</span></h3><table class="lntab"><tbody>${dropped.map(p => `<tr data-pid="${p.id}"><td class="l">➖ ${pl(p)}<div class="sub">${sub(p)} · Prognose 4 Spiele ${fmt(progOf(p),1)}</div></td><td><b>${fmt(r.valOf(p),1)}</b></td></tr>`).join('')}</tbody></table></div>`;
+  if(r.out.length) h += `<div class="lnsec"><h3><span>Nicht berücksichtigt (Out / IR)</span></h3><table class="lntab"><tbody>${r.out.map(p => { const sp = (sleeper.spByFpl || {})[p.id], ret = sp && sp.metadata && sp.metadata.soccer_injury_return_date;
+    return `<tr data-pid="${p.id}"><td class="l">${pl(p)}<div class="sub">${esc(teams[p.teamId]?.short || '')} · ${esc(outWhy(p))}${ret && Date.parse(ret) > Date.now() ? ' · zurück ca. ' + fmtDay(ret) : ''}</div></td><td class="nodata">–</td></tr>`; }).join('')}</tbody></table></div>`;
+  // Hinweise
+  const tips = [];
+  for(const p of r.irTips) tips.push(`<b>${esc(p.name)}</b> fällt aus, belegt aber einen Kaderplatz – auf IR setzen, dann ist ein Platz frei für einen freien Spieler.`);
+  for(const x of r.cur.assign){
+    if(!x.c) continue; const p = x.c.p;
+    if((p.pStart || 0) >= 0.8 && p.status === 'a') continue;
+    const t0 = koTime(r.fxOf(p)); if(!t0) continue;
+    const ok = slotAllows(x.slot);
+    const alt = bench.filter(q => !r.lockedOf(q) && slPos(q).some(y => ok.includes(y))).map(q => ({ q, t: koTime(r.fxOf(q)) })).filter(z => z.t && z.t >= t0).sort((a,b) => r.valOf(b.q) - r.valOf(a.q))[0];
+    if(alt) tips.push(`<b>${esc(p.name)}</b> (Startchance ${Math.round((p.pStart || 0) * 100)} %): Aufstellung ca. 1 Std. vor Anpfiff (${koStr(t0)}) prüfen – steht er nicht in der Startelf, gegen <b>${esc(alt.q.name)}</b> (${koStr(alt.t)}) tauschen.`);
+  }
+  if(tips.length) h += `<div class="lnsec"><h3><span>Hinweise</span></h3>${tips.map(t => `<div class="lntip">⏱ ${t}</div>`).join('')}<div class="nodata">Sleeper sperrt jeden Spieler erst beim Anpfiff seines Spiels – bis dahin kannst du tauschen.</div></div>`;
+  h += `<div class="lnfoot"><a href="https://sleeper.com/leagues/${esc(sleeper.leagueId)}/team" target="_blank" rel="noopener">In Sleeper umstellen ↗</a><span class="nodata">☆ antippen = Favorit (★ wird nie zur Abgabe vorgeschlagen) · Doppeltipp = Profil</span></div>`;
+  el.innerHTML = h;
+  const sel = $('lnMoves'); if(sel) sel.onchange = e => { store.set('lineupMoves', +e.target.value); renderLineup(); };
+}
 
 /* ---------- Klub-Fenster (Teams → PL-Tabelle) ---------- */
 const GRP = { FWD:{ pos:['FWD'], t:'Sturm' }, MID:{ pos:['MID'], t:'Mittelfeld' }, DEF:{ pos:['DEF','GKP'], t:'Abwehr & Tor' }, ALL:{ pos:['GKP','DEF','MID','FWD'], t:'ganzer Kader' } };
@@ -2033,7 +2340,7 @@ function playerSheet(p){
   const own = !Object.keys(sleeper.users).length ? '' : (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">mein Team</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
   const [tcls, tlabel] = p.score != null ? tierOf(p.score) : ['', ''];
   const slPos = sp && sp.fantasy_positions ? sp.fantasy_positions.map(x => SLPOS_DE[x] || x).join(' / ') : '';
-  let h = `<div class="pvname"><span class="p-${p.pos}">${esc(p.name)}</span></div>
+  let h = `<div class="pvname">${favBtn(p)}<span class="p-${p.pos}">${esc(p.name)}</span></div>
     <div class="pvsub"><b style="color:var(--text)">${esc(teams[p.teamId].name)}</b>${sp && sp.number ? `<span>#${sp.number}</span>` : ''}<span>${POS_DE[p.pos]}</span>${sp && sp.age ? `<span>${sp.age} J.</span>` : ''}${sp && sp.birth_country ? `<span>${esc(sp.birth_country)}</span>` : ''}${own}</div>`;
   h += `<div class="pvkpi">
     <div><span class="score ${tcls}">${p.score ?? '–'}</span><small>Score · ${tlabel}</small></div>
@@ -2177,7 +2484,8 @@ function closePlayer(fromPop){
 }
 window.addEventListener('popstate', () => { if(!$('pv').hidden){ pvPushed = false; closePlayer(true); } });
 window.plOpenPlayer = openPlayer;
-window.plExport = () => players.map(p => ({ id:p.id, sid:(sleeper.sidByFpl||{})[p.id]||'', name:p.full, web:p.name, pos:p.pos, club:teams[p.teamId]?.short, score:p.score, base:p.scoreBase, prog:p.prog, xfp:p.xfp, floor:p.floor, ceil:p.ceil, pStart:p.pStart, slp:p.slp, vorp:p.vorp, l10:p.l10, l3:p.l3, pts90:p.pts90, min:p.minutes, minL5:p.minL5, past:p.pastScore, comp:p.comp, owner:ownerOf(p)||'', status:p.status, chance:p.chance, news:p.news, xMin:p.xMin, ki:(kiOf(p)||{}).t||'', parts:(p.progParts||[]).map(x => ({ gw:x.gw, opp:teams[x.opp]?.short, home:x.home, pts:+x.pts.toFixed(2), cs:+x.cs.toFixed(2), tore:+x.tore.toFixed(2) })), log:(p.log||[]).slice(-4).map(g => [g.gw, g.min, +(+g.pts).toFixed(1)]) }));
+window.plExport = () => players.map(p => ({ id:p.id, sid:(sleeper.sidByFpl||{})[p.id]||'', name:p.full, web:p.name, pos:p.pos, club:teams[p.teamId]?.short, score:p.score, base:p.scoreBase, prog:p.prog, progOwn:p.progOwn, xfp:p.xfp, xfpOwn:p.xfpOwn, floor:p.floor, ceil:p.ceil, pStart:p.pStart, slp:p.slp, vorp:p.vorp, l10:p.l10, l3:p.l3, pts90:p.pts90, min:p.minutes, minL5:p.minL5, past:p.pastScore, comp:p.comp, owner:ownerOf(p)||'', status:p.status, chance:p.chance, news:p.news, xMin:p.xMin, ki:(kiOf(p)||{}).t||'', parts:(p.progParts||[]).map(x => ({ gw:x.gw, opp:teams[x.opp]?.short, home:x.home, pts:+x.pts.toFixed(2), cs:+x.cs.toFixed(2), tore:+x.tore.toFixed(2) })), log:(p.log||[]).slice(-4).map(g => [g.gw, g.min, +(+g.pts).toFixed(1)]) }));
+window.plLineup = (n = 3) => ({ r: optimizeLineup(n), slotAllows, isOut, favs, ownerOf }); // Test/Diagnose
 window.plMeta = () => ({ nextGw, gwState, me: sleeper.me, leagueId: sleeper.leagueId, repl: replLevel });
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closePlayer(); });
 $('pv').addEventListener('click', e => {
@@ -2217,12 +2525,13 @@ $('scoreWeights').addEventListener('input', e => { const k = e.target.dataset.sw
 $('meSel').addEventListener('change', e => {
   sleeper.me = e.target.value; teamA = sleeper.me; store.set('me_'+$('leagueId').value.trim(), sleeper.me); store.set('me', sleeper.me);
   const u = new URL(location.href); if(sleeper.me) u.searchParams.set('me', sleeper.me); else u.searchParams.delete('me'); history.replaceState(null,'',u);
-  renderAll();
+  renderAll(); loadFavs().then(() => { renderTable(); renderTeams(); renderLineup(); });
 });
 async function doLoadLeague(){
   const id = $('leagueId').value.trim(); if(!id) return;
   try {
     await loadSleeper(id);
+    loadFavs().then(() => { renderTable(); renderTeams(); renderLineup(); });
     setTimeout(sendWatchlist, 1500);
     calibrate();
     const u = new URL(location.href); u.searchParams.set('league', id);
@@ -2301,7 +2610,8 @@ $('copyPrompt').addEventListener('click', async () => { coachMsg(await copyText(
 $('tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if(!b) return;
   view = b.dataset.tab; [...$('tabs').children].forEach(x => x.classList.toggle('on', x===b));
-  $('viewPlayers').hidden = view!=='players'; $('viewTeams').hidden = view!=='teams'; $('viewCoach').hidden = view!=='coach';
+  $('viewPlayers').hidden = view!=='players'; $('viewTeams').hidden = view!=='teams'; $('viewCoach').hidden = view!=='coach'; $('viewLineup').hidden = view!=='lineup';
+  if(view === 'lineup') renderLineup();
   store.set('view', view);
   if(view === 'coach') loadMemory();
 });
@@ -2314,7 +2624,7 @@ $('lgBody').addEventListener('click', e => {
   if(sleeper.me && teamA === sleeper.me) teamB = o; else teamA = o;
   renderTeams(); $('rosters').scrollIntoView({behavior:'smooth', block:'start'});
 });
-{ const v = store.get('view'); if(v === 'teams' || v === 'coach') $('tabs').querySelector(`[data-tab=${v}]`).click(); }
+{ const v = store.get('view'); if(v === 'teams' || v === 'coach' || v === 'lineup') $('tabs').querySelector(`[data-tab=${v}]`).click(); }
 $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeague(); });
 
 if(!store.get('league') && !new URLSearchParams(location.search).get('league')) store.set('foldLeague', true); // erste Nutzung: Liga-Eingabe offen

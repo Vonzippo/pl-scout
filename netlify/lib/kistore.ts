@@ -70,3 +70,13 @@ export async function updateMemory(k: string, add: string[], remove: string[]): 
   await store().setJSON(memKey(k), { notes: keep });
   return keep;
 }
+
+// Favoriten (Spieler, die nie zur Abgabe vorgeschlagen werden) pro Liga + Nutzer
+export async function loadFavs(k: string): Promise<number[]> {
+  return (((await store().get("fav-" + k.replace(/[^0-9a-z_-]/gi, "").slice(0, 60), { type: "json" })) as any)?.ids) || [];
+}
+export async function saveFavs(k: string, ids: number[]) {
+  const clean = [...new Set(ids.filter((x) => Number.isInteger(x) && x > 0))].slice(0, 60);
+  await store().setJSON("fav-" + k.replace(/[^0-9a-z_-]/gi, "").slice(0, 60), { ids: clean, ts: Date.now() });
+  return clean;
+}
