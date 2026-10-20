@@ -602,7 +602,7 @@ function computeXfp(){
     };
     // 35 % aktuelle Form (echte Punkte pro Einsatz, nach erwarteten Minuten gewichtet) – jüngste echte Punkte sind laut Backtest der stärkste Prädiktor
     const formPart = (p.l10 || 0) * Math.min(1, (p.xMin || 0) / Math.max(30, p.minPerApp || p.minL5 || 90));
-    p.slp = sleeper.proj ? sleeper.proj[p.id] : undefined;
+    p.slp = sleeper.proj && sleeper.proj[p.id] != null ? sleeper.proj[p.id] * ((sleeper.projCal || {})[p.pos] || 1) : undefined;
     // Prognose: erwartete Punkte der nächsten 4 Spiele, gewichtet 40/30/20/10
     const PW = [0.4, 0.3, 0.2, 0.1];
     p.progParts = models.map((x, i) => ({ gw: x.f.gw, opp: x.f.opp, home: x.f.home, w: PW[i], pts: 0.65 * expPts(x.m) + 0.35 * formPart,
@@ -1101,7 +1101,17 @@ async function loadSleeperStats(){
     const proj = {};
     for(const e of pr || []){ if(!e || !e.stats) continue; const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue; proj[fid] = (proj[fid] || 0) + leaguePoints(e.stats, ss); }
     sleeper.proj = proj;
-    dataStatus.proj = { at: Date.now(), ok: Object.keys(proj).length > 0, info: `GW ${nextGw}: ${Object.keys(proj).length} Spieler` };
+    // Kalibrierung: Sleeper-Prognosen unterschätzen Verteidiger/Torhüter stark (Defensivaktionen fehlen) → Faktor je Position aus den letzten 3 Spieltagen (echt / prognostiziert)
+    try {
+      const wks = have.filter(w => w < nextGw).slice(-3), acc = {};
+      const prs = await Promise.all(wks.map(w => getJSON(`/api/sl/projections/clubsoccer:epl/${season}/${w}?season_type=regular`).catch(() => [])));
+      prs.forEach((arr, i) => { for(const e of arr || []){ if(!e || !e.stats) continue; const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue;
+        const pj = leaguePoints(e.stats, ss); if(pj < 2) continue; const pl = players.find(x => x.id === fid); if(!pl) continue;
+        const a = (acc[pl.pos] ||= { p:0, r:0, n:0 }); a.p += pj; a.r += ((real[fid] || {})[wks[i]] || {}).pts || 0; a.n++; } });
+      sleeper.projCal = Object.fromEntries(Object.entries(acc).filter(([,a]) => a.n >= 15 && a.p > 0).map(([k,a]) => [k, Math.max(0.8, Math.min(2.2, a.r / a.p))]));
+    } catch(e){ sleeper.projCal = null; }
+    const cal = sleeper.projCal ? Object.entries(sleeper.projCal).map(([k,v]) => `${k} ×${v.toFixed(2)}`).join(', ') : '';
+    dataStatus.proj = { at: Date.now(), ok: Object.keys(proj).length > 0, info: `GW ${nextGw}: ${Object.keys(proj).length} Spieler${cal ? ' · kalibriert ' + cal : ''}` };
   } catch(e){ sleeper.proj = null; dataStatus.proj = { at: Date.now(), ok: false, info: 'nicht verfügbar' }; }
 }
 async function calibrate(){
