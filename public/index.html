@@ -2167,7 +2167,8 @@ function closePlayer(fromPop){
 }
 window.addEventListener('popstate', () => { if(!$('pv').hidden){ pvPushed = false; closePlayer(true); } });
 window.plOpenPlayer = openPlayer;
-window.plExport = () => players.map(p => ({ id:p.id, sid:(sleeper.sidByFpl||{})[p.id]||'', name:p.full, web:p.name, pos:p.pos, club:teams[p.teamId]?.short, score:p.score, base:p.scoreBase, prog:p.prog, xfp:p.xfp, l10:p.l10, pts90:p.pts90, min:p.minutes, past:p.pastScore, comp:p.comp, owner:ownerOf(p)||'', status:p.status, xMin:p.xMin }));
+window.plExport = () => players.map(p => ({ id:p.id, sid:(sleeper.sidByFpl||{})[p.id]||'', name:p.full, web:p.name, pos:p.pos, club:teams[p.teamId]?.short, score:p.score, base:p.scoreBase, prog:p.prog, xfp:p.xfp, floor:p.floor, ceil:p.ceil, pStart:p.pStart, slp:p.slp, vorp:p.vorp, l10:p.l10, l3:p.l3, pts90:p.pts90, min:p.minutes, minL5:p.minL5, past:p.pastScore, comp:p.comp, owner:ownerOf(p)||'', status:p.status, chance:p.chance, news:p.news, xMin:p.xMin, ki:(kiOf(p)||{}).t||'', parts:(p.progParts||[]).map(x => ({ gw:x.gw, opp:teams[x.opp]?.short, home:x.home, pts:+x.pts.toFixed(2), cs:+x.cs.toFixed(2), tore:+x.tore.toFixed(2) })), log:(p.log||[]).slice(-4).map(g => [g.gw, g.min, +(+g.pts).toFixed(1)]) }));
+window.plMeta = () => ({ nextGw, gwState, me: sleeper.me, leagueId: sleeper.leagueId, repl: replLevel });
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closePlayer(); });
 $('pv').addEventListener('click', e => {
   if(e.target === $('pv') || e.target.closest('[data-pvclose]')) return closePlayer();
