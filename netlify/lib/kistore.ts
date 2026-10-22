@@ -71,12 +71,15 @@ export async function updateMemory(k: string, add: string[], remove: string[]): 
   return keep;
 }
 
-// Favoriten (Spieler, die nie zur Abgabe vorgeschlagen werden) pro Liga + Nutzer
-export async function loadFavs(k: string): Promise<number[]> {
-  return (((await store().get("fav-" + k.replace(/[^0-9a-z_-]/gi, "").slice(0, 60), { type: "json" })) as any)?.ids) || [];
+// Markierungen pro Liga + Nutzer: ids = 🔒 behalten (nie abgeben), start = ★ immer aufstellen (und behalten)
+const favKeyOf = (k: string) => "fav-" + k.replace(/[^0-9a-z_-]/gi, "").slice(0, 60);
+const cleanIds = (a: unknown) => [...new Set((Array.isArray(a) ? a : []).map(Number).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 60);
+export async function loadFavs(k: string): Promise<{ ids: number[]; start: number[] }> {
+  const v: any = await store().get(favKeyOf(k), { type: "json" });
+  return { ids: cleanIds(v?.ids), start: cleanIds(v?.start) };
 }
-export async function saveFavs(k: string, ids: number[]) {
-  const clean = [...new Set(ids.filter((x) => Number.isInteger(x) && x > 0))].slice(0, 60);
-  await store().setJSON("fav-" + k.replace(/[^0-9a-z_-]/gi, "").slice(0, 60), { ids: clean, ts: Date.now() });
-  return clean;
+export async function saveFavs(k: string, ids: unknown, start: unknown) {
+  const s = cleanIds(start), keep = cleanIds(ids).filter((x) => !s.includes(x));
+  await store().setJSON(favKeyOf(k), { ids: keep, start: s, ts: Date.now() });
+  return { ids: keep, start: s };
 }

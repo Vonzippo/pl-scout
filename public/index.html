@@ -182,6 +182,7 @@ td.muted{color:var(--muted)}
 @media(max-width:640px){.cpop{padding:0;align-items:flex-end}.cpbox{border-radius:14px 14px 0 0;max-height:85vh;overflow-y:auto;border:0}}
 .fav{background:none;border:0;padding:0 3px 0 0;font-size:15px;line-height:1;color:var(--muted);cursor:pointer;vertical-align:-1px}
 .fav.on{color:#ffd166}
+.fav.keep{font-size:12px;vertical-align:0}
 .lineup h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px}
 #lineupBody{margin-top:10px}
 #lineupSum{margin-left:4px}
@@ -1856,7 +1857,7 @@ function line(p){
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
   const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
   const ki = kiOf(p);
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos})${favs.has(p.id) && ownerOf(p) === sleeper.me ? ' ★ FAVORIT (immer aufstellen, nie abgeben)' : ''} | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos})${ownerOf(p) === sleeper.me ? (starts.has(p.id) ? ' ★ IMMER AUFSTELLEN (nie abgeben)' : favs.has(p.id) ? ' 🔒 BEHALTEN (nie abgeben)' : '') : ''} | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}` +
     ((p.progParts||[]).length ? ' | PRO SPIEL: ' + p.progParts.slice(0,2).map(x => `GW${x.gw} ${x.home?'vs':'@'} ${teams[x.opp]?.short||'?'} ${fmt(x.pts,1)} Pkt (Team-Tore ${fmt(x.tore,1)}, Gegentore ${fmt(x.gegentore,1)}, Zu-Null ${Math.round(x.cs*100)}%)`).join('; ') : '');
@@ -2052,30 +2053,44 @@ function renderScoring(){
 }
 function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); renderLineup(); refreshPreview(); renderDataStatus(); }
 
-/* ---------- Favoriten (★ = immer in der Startelf, nie zur Abgabe vorschlagen) ---------- */
-let favs = new Set();
+/* ---------- Markierungen eigener Spieler: 🔒 = behalten (nie abgeben), ★ = immer aufstellen (und behalten) ---------- */
+let favs = new Set(), starts = new Set();
+const isKept = id => favs.has(id) || starts.has(id);
 const favKey = () => sleeper.leagueId ? `${sleeper.leagueId}_${sleeper.me || 'x'}` : '';
+function setFavs(o){ // altes Format: nur Liste = behalten
+  if(Array.isArray(o)) o = { ids: o, start: [] };
+  starts = new Set((o && o.start) || []); favs = new Set(((o && o.ids) || []).filter(id => !starts.has(id)));
+}
 async function loadFavs(){
   const k = favKey(); if(!k) return;
-  favs = new Set(store.get('fav_' + k) || []);
-  try { const j = await getJSON('/api/ki/fav?k=' + k + '&t=' + Date.now()); favs = new Set(j.ids || []); store.set('fav_' + k, [...favs]); } catch(e){}
+  setFavs(store.get('fav_' + k));
+  try { const j = await getJSON('/api/ki/fav?k=' + k + '&t=' + Date.now()); setFavs(j); store.set('fav_' + k, { ids: [...favs], start: [...starts] }); } catch(e){}
 }
-function toggleFav(id){
+function toggleFav(id){ // ☆ → 🔒 behalten → ★ immer aufstellen → ☆
   const k = favKey(); if(!k) return;
-  if(favs.has(id)) favs.delete(id); else favs.add(id);
-  store.set('fav_' + k, [...favs]);
-  fetch('/api/ki/fav?k=' + k, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ ids: [...favs] }) }).catch(() => {});
+  if(starts.has(id)) starts.delete(id);
+  else if(favs.has(id)){ favs.delete(id); starts.add(id); }
+  else favs.add(id);
+  store.set('fav_' + k, { ids: [...favs], start: [...starts] });
+  fetch('/api/ki/fav?k=' + k, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ ids: [...favs], start: [...starts] }) }).catch(() => {});
 }
+const FAV_UI = {
+  start: ['★', 'fav on', '★ Immer aufstellen – steht in der Startelf (wenn fit) und wird nie abgegeben. Antippen = Markierung entfernen'],
+  keep: ['🔒', 'fav keep', '🔒 Behalten – wird nie zur Abgabe vorgeschlagen, darf aber auf der Bank sitzen. Antippen = ★ immer aufstellen'],
+  none: ['☆', 'fav', 'Antippen = 🔒 behalten (nie abgeben) · nochmals = ★ immer aufstellen']
+};
+const favState = id => starts.has(id) ? 'start' : favs.has(id) ? 'keep' : 'none';
 function favBtn(p){
   if(!sleeper.me || ownerOf(p) !== sleeper.me) return '';
-  const on = favs.has(p.id);
-  return `<button class="fav${on ? ' on' : ''}" data-fav="${p.id}" title="${on ? 'Favorit – steht immer in der Startelf und wird nie zur Abgabe vorgeschlagen (antippen = entfernen)' : 'Als Favorit markieren (immer aufstellen, nie abgeben)'}">${on ? '★' : '☆'}</button>`;
+  const [ic, cls, tip] = FAV_UI[favState(p.id)];
+  return `<button class="${cls}" data-fav="${p.id}" title="${tip}">${ic}</button>`;
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-fav]'); if(!b) return;
   e.preventDefault(); e.stopPropagation();
   const id = +b.dataset.fav; toggleFav(id);
-  document.querySelectorAll(`[data-fav="${id}"]`).forEach(x => { const on = favs.has(id); x.classList.toggle('on', on); x.textContent = on ? '★' : '☆'; });
+  const [ic, cls, tip] = FAV_UI[favState(id)];
+  document.querySelectorAll(`[data-fav="${id}"]`).forEach(x => { x.className = cls; x.textContent = ic; x.title = tip; });
   renderLineup();
 }, true);
 document.addEventListener('dblclick', e => { if(e.target.closest('[data-fav]')){ e.preventDefault(); e.stopPropagation(); } }, true);
@@ -2175,8 +2190,8 @@ function optimizeLineup(maxMoves){
   const fxc = new Map(), fxOf = p => { if(!fxc.has(p.id)) fxc.set(p.id, gwFixture(p, gw)); return fxc.get(p.id); };
   const lockedOf = p => { const f = fxOf(p); return !!(f && (f.started || f.finished || koTime(f) <= now)); };
   const valOf = p => { const f = fxOf(p); if(f && f.finished){ const r = ((sleeper.real || {})[p.id] || {})[gw]; return r ? r.pts : 0; } return gwValue(p, gw); };
-  // ★-Favoriten: sehr hohes Gewicht → stehen immer in der Startelf (sofern fit und mit Spiel im Spieltag)
-  const cc = new Map(), cand = p => { if(!cc.has(p.id)){ const val = valOf(p); cc.set(p.id, { p, val, w: val + (p.score || 0) / 1000 + (favs.has(p.id) && fxOf(p) ? 1000 : 0), pos: slPos(p) }); } return cc.get(p.id); };
+  // ★ immer aufstellen: sehr hohes Gewicht → steht immer in der Startelf (sofern fit und mit Spiel im Spieltag)
+  const cc = new Map(), cand = p => { if(!cc.has(p.id)){ const val = valOf(p); cc.set(p.id, { p, val, w: val + (p.score || 0) / 1000 + (starts.has(p.id) && fxOf(p) ? 1000 : 0), pos: slPos(p) }); } return cc.get(p.id); };
   // aktuell in Sleeper gesetzte Startelf (gleiche Reihenfolge wie roster_positions)
   const myR = sleeper.rosters.find(r => r.owner === sleeper.me);
   const raw = (myR && myR.startersRaw) || [];
@@ -2211,7 +2226,7 @@ function optimizeLineup(maxMoves){
   const forced = [];
   while(freeSpots() < 0){
     let best = null;
-    for(const d of pool.filter(p => !favs.has(p.id) && !lockedOf(p))){
+    for(const d of pool.filter(p => !isKept(p.id) && !lockedOf(p))){
       const r2 = evalPool(pool.filter(x => x !== d)), loss = cur.total - r2.total, lt = progOf(d) + (d.score || 0) / 20;
       if(!best || loss < best.loss - 0.05 || (Math.abs(loss - best.loss) <= 0.05 && lt < best.lt)) best = { d, loss, r: r2, lt };
     }
@@ -2221,7 +2236,7 @@ function optimizeLineup(maxMoves){
   const ownOnly = cur, moves = [], added = new Set();
   for(let step = 0; step < maxMoves; step++){
     let best = null;
-    const drops = pool.filter(p => !favs.has(p.id) && !lockedOf(p) && !added.has(p.id));
+    const drops = pool.filter(p => !isKept(p.id) && !lockedOf(p) && !added.has(p.id));
     const dropOpts = freeSpots() > 0 ? [null, ...drops] : drops;
     for(const f of fa){
       if(pool.includes(f)) continue;
@@ -2279,14 +2294,14 @@ function renderLineup(){
     <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
   // Spielfeld: klare Formation (Sturm oben, Torwart unten)
   const fxShort = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')}`; };
-  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${favs.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span></div>`;
+  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span></div>`;
   const LINE_DE = { F:'Sturm', M:'Mittelfeld', D:'Abwehr', GK:'Tor' };
   h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">Prognose GW ${gw}: ${fmt(tot,1)}</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
     <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
   // Wechsel über freie Spieler
   h += `<div class="lnsec"><h3><span>Wechsel über freie Spieler</span><select id="lnMoves" title="höchstens so viele Wechsel vorschlagen">${[0,1,2,3].map(n => `<option value="${n}"${n === maxMoves ? ' selected' : ''}>${n ? 'max. ' + n : 'keine'}</option>`).join('')}</select></h3>`;
   const c = r.cap;
-  h += `<div class="lncap${c.used > c.capacity ? ' over' : ''}">Kader nach den Wechseln: <b>${c.used} / ${c.capacity}</b> Plätze · IR ${c.irUsed} / ${c.irSlots}${c.used > c.capacity ? ' · ⚠️ über dem Maximum – bitte einen Spieler abgeben (★-Favoriten schlägt die Seite nie vor)' : c.free > 0 ? ` · ${c.free} Platz frei` : ' · voll – jeder Zuzug braucht eine Abgabe'}${c.unmatched ? ` · inkl. ${c.unmatched} Spieler ohne PL-Zuordnung` : ''}</div>`;
+  h += `<div class="lncap${c.used > c.capacity ? ' over' : ''}">Kader nach den Wechseln: <b>${c.used} / ${c.capacity}</b> Plätze · IR ${c.irUsed} / ${c.irSlots}${c.used > c.capacity ? ' · ⚠️ über dem Maximum – bitte einen Spieler abgeben (🔒/★-Spieler schlägt die Seite nie vor)' : c.free > 0 ? ` · ${c.free} Platz frei` : ' · voll – jeder Zuzug braucht eine Abgabe'}${c.unmatched ? ` · inkl. ${c.unmatched} Spieler ohne PL-Zuordnung` : ''}</div>`;
   if(r.forced.length){
     const why = [...r.healthyIR.map(p => `${esc(p.name)} ist wieder fit und muss aus IR zurück`), ...(c.unmatched ? [`${c.unmatched} Spieler ohne PL-Zuordnung belegt einen Platz`] : [])].join(' · ');
     h += `<div class="nodata" style="margin-bottom:6px">Sonst wäre der Kader über dem Maximum${why ? ': ' + why : ''}.</div>` + r.forced.map(x => `<div class="lnmove warn"><div>➖ <b>${esc(x.d.name)}</b> abgeben (Pflicht)</div><div class="nodata">${sub(x.d)} · kostet ${fmt(x.loss,1)} Pkt in GW ${gw}</div></div>`).join('');
@@ -2295,7 +2310,7 @@ function renderLineup(){
     h += r.moves.map((m, i) => { const w = r.waiverUntil(m.f);
       return `<div class="lnmove"><div><b>${i + 1}.</b> ➕ <b class="p-${m.f.pos}">${esc(m.f.name)}</b> holen${m.d ? ` · ➖ <b>${esc(m.d.name)}</b> abgeben` : ' (freier Kaderplatz)'} <span class="lngain">+${fmt(m.gain,1)} Pkt</span></div>
         <div class="nodata">${sub(m.f)} · Prognose nächste 4 Spiele ${fmt(progOf(m.f),1)}${m.d ? ' statt ' + fmt(progOf(m.d),1) : ''} · ${w ? `⏳ auf Waiver bis ${koStr(w)} – nur per Claim` : '✅ sofort holbar'}</div></div>`; }).join('');
-  } else h += `<div class="nodata">${maxMoves ? `Kein freier Spieler bringt mehr als 0.4 Punkte – dein Kader ist für GW ${gw} schon optimal${favs.size ? ' (★-Favoriten werden nie abgegeben)' : ''}.` : 'Wechsel ausgeschaltet – nur dein Kader.'}</div>`;
+  } else h += `<div class="nodata">${maxMoves ? `Kein freier Spieler bringt mehr als 0.4 Punkte – dein Kader ist für GW ${gw} schon optimal${favs.size || starts.size ? ' (🔒/★-Spieler werden nie abgegeben)' : ''}.` : 'Wechsel ausgeschaltet – nur dein Kader.'}</div>`;
   h += `</div>`;
   // Startelf
   h += `<div class="lnsec"><h3><span>So in Sleeper eintragen</span><span class="nodata" style="text-transform:none;letter-spacing:0">Slot · Prognose GW ${gw}</span></h3><table class="lntab"><tbody>` + xiRows.map(x => {
@@ -2323,7 +2338,7 @@ function renderLineup(){
     if(alt) tips.push(`<b>${esc(p.name)}</b> (Startchance ${Math.round((p.pStart || 0) * 100)} %): Aufstellung ca. 1 Std. vor Anpfiff (${koStr(t0)}) prüfen – steht er nicht in der Startelf, gegen <b>${esc(alt.q.name)}</b> (${koStr(alt.t)}) tauschen.`);
   }
   if(tips.length) h += `<div class="lnsec"><h3><span>Hinweise</span></h3>${tips.map(t => `<div class="lntip">⏱ ${t}</div>`).join('')}<div class="nodata">Sleeper sperrt jeden Spieler erst beim Anpfiff seines Spiels – bis dahin kannst du tauschen.</div></div>`;
-  h += `<div class="lnfoot"><a href="https://sleeper.com/leagues/${esc(sleeper.leagueId)}/team" target="_blank" rel="noopener">In Sleeper umstellen ↗</a><span class="nodata">☆ antippen = Favorit: ★ steht immer in der Startelf (wenn fit) und wird nie abgegeben · Doppeltipp = Profil</span></div>`;
+  h += `<div class="lnfoot"><a href="https://sleeper.com/leagues/${esc(sleeper.leagueId)}/team" target="_blank" rel="noopener">In Sleeper umstellen ↗</a><span class="nodata">Symbol antippen: ☆ → 🔒 behalten (nie abgeben) → ★ immer aufstellen (wenn fit) → ☆ · Doppeltipp = Profil</span></div>`;
   el.innerHTML = h;
   const sel = $('lnMoves'); if(sel) sel.onchange = e => { store.set('lineupMoves', +e.target.value); renderLineup(); };
 }
@@ -2535,7 +2550,7 @@ function closePlayer(fromPop){
 window.addEventListener('popstate', () => { if(!$('pv').hidden){ pvPushed = false; closePlayer(true); } });
 window.plOpenPlayer = openPlayer;
 window.plExport = () => players.map(p => ({ id:p.id, sid:(sleeper.sidByFpl||{})[p.id]||'', name:p.full, web:p.name, pos:p.pos, club:teams[p.teamId]?.short, score:p.score, base:p.scoreBase, prog:p.prog, progOwn:p.progOwn, xfp:p.xfp, xfpOwn:p.xfpOwn, floor:p.floor, ceil:p.ceil, pStart:p.pStart, slp:p.slp, vorp:p.vorp, l10:p.l10, l3:p.l3, pts90:p.pts90, min:p.minutes, minL5:p.minL5, past:p.pastScore, comp:p.comp, owner:ownerOf(p)||'', status:p.status, chance:p.chance, news:p.news, xMin:p.xMin, ki:(kiOf(p)||{}).t||'', parts:(p.progParts||[]).map(x => ({ gw:x.gw, opp:teams[x.opp]?.short, home:x.home, pts:+x.pts.toFixed(2), cs:+x.cs.toFixed(2), tore:+x.tore.toFixed(2) })), log:(p.log||[]).slice(-4).map(g => [g.gw, g.min, +(+g.pts).toFixed(1)]) }));
-window.plLineup = (n = 3) => ({ r: optimizeLineup(n), slotAllows, isOut, favs, ownerOf }); // Test/Diagnose
+window.plLineup = (n = 3) => ({ r: optimizeLineup(n), slotAllows, isOut, favs, starts, ownerOf }); // Test/Diagnose
 window.plMeta = () => ({ nextGw, gwState, me: sleeper.me, leagueId: sleeper.leagueId, repl: replLevel });
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closePlayer(); });
 $('pv').addEventListener('click', e => {

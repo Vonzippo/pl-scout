@@ -83,8 +83,8 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn ni
   if (path.endsWith("/fav")) {
     const k = String(url.searchParams.get("k") || "");
     if (!/^[0-9a-z_-]{3,60}$/i.test(k)) return json(400, { error: "ungültig" });
-    if (req.method === "GET") return json(200, { ids: await loadFavs(k) }, { "cache-control": "no-store" });
-    if (req.method === "POST") { const body: any = await req.json().catch(() => ({})); return json(200, { ids: await saveFavs(k, Array.isArray(body?.ids) ? body.ids.map(Number) : []) }); }
+    if (req.method === "GET") return json(200, await loadFavs(k), { "cache-control": "no-store" });
+    if (req.method === "POST") { const body: any = await req.json().catch(() => ({})); return json(200, await saveFavs(k, body?.ids, body?.start)); }
   }
 
   // Gedächtnis: lesen (Seite + Coach), Notiz löschen (Seite), Notizen ändern (nur Coach mit Geheimnis)
