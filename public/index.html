@@ -183,6 +183,8 @@ td.muted{color:var(--muted)}
 .fav{background:none;border:0;padding:0 3px 0 0;font-size:15px;line-height:1;color:var(--muted);cursor:pointer;vertical-align:-1px}
 .fav.on{color:#ffd166}
 .lineup h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+#lineupBody{margin-top:10px}
+#lineupSum{margin-left:4px}
 .lineup h3 select{font-size:12px;padding:3px 6px;text-transform:none;letter-spacing:0}
 .lnhead{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}
 .lnkpi{display:flex;gap:8px}
@@ -350,13 +352,13 @@ body.noscroll{overflow:hidden}
   <div class="card" id="dataPanel" hidden style="margin-bottom:12px"></div>
   </details>
 
-  <div class="tabs" id="tabs"><button data-tab="players" class="on">Spieler</button><button data-tab="lineup">🏆 Aufstellung</button><button data-tab="teams">Teams</button><button data-tab="coach">✨ KI-Coach</button></div>
-
-  <section id="viewLineup" hidden>
-    <div class="card lineup"><div id="lineupBody" class="empty">Lade deine Sleeper-Liga und wähle oben, wer du bist.</div></div>
-  </section>
+  <div class="tabs" id="tabs"><button data-tab="players" class="on">Spieler</button><button data-tab="teams">Teams</button><button data-tab="coach">✨ KI-Coach</button></div>
 
   <section id="viewTeams" hidden>
+    <details class="card lineup" id="lineupCard" open style="margin-bottom:12px">
+      <summary style="cursor:pointer;font-weight:700">🏆 Beste Aufstellung <span id="lineupSum" class="empty" style="font-weight:400"></span></summary>
+      <div id="lineupBody" class="empty">Lade deine Sleeper-Liga und wähle oben, wer du bist.</div>
+    </details>
     <details class="card" id="plCard" open style="margin-bottom:12px">
       <summary style="cursor:pointer;font-weight:700">⚽ Premier League – Tabelle & Teamstärken</summary>
       <div class="empty" style="margin:6px 0">Rang 1–20 (grün = stark, rot = schwach) · Angriff = xG/Spiel · Mitte = Fantasy-Punkte der Mittelfeldspieler · Abwehr = xG gegen/Spiel · Form = letzte 5 (S/U/N) · <b>Klub antippen = ganzer Kader, Angr./Mitte/Abw. antippen = Spieler dieser Linie</b></div>
@@ -1854,7 +1856,7 @@ function line(p){
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
   const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
   const ki = kiOf(p);
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos})${favs.has(p.id) && ownerOf(p) === sleeper.me ? ' ★ FAVORIT (nie abgeben)' : ''} | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos})${favs.has(p.id) && ownerOf(p) === sleeper.me ? ' ★ FAVORIT (immer aufstellen, nie abgeben)' : ''} | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}` +
     ((p.progParts||[]).length ? ' | PRO SPIEL: ' + p.progParts.slice(0,2).map(x => `GW${x.gw} ${x.home?'vs':'@'} ${teams[x.opp]?.short||'?'} ${fmt(x.pts,1)} Pkt (Team-Tore ${fmt(x.tore,1)}, Gegentore ${fmt(x.gegentore,1)}, Zu-Null ${Math.round(x.cs*100)}%)`).join('; ') : '');
@@ -2050,7 +2052,7 @@ function renderScoring(){
 }
 function renderAll(){ recompute(); renderHead(); renderTable(); renderCompare(); renderTips(); renderTeams(); renderLineup(); refreshPreview(); renderDataStatus(); }
 
-/* ---------- Favoriten (★ = nie zur Abgabe vorschlagen) ---------- */
+/* ---------- Favoriten (★ = immer in der Startelf, nie zur Abgabe vorschlagen) ---------- */
 let favs = new Set();
 const favKey = () => sleeper.leagueId ? `${sleeper.leagueId}_${sleeper.me || 'x'}` : '';
 async function loadFavs(){
@@ -2067,7 +2069,7 @@ function toggleFav(id){
 function favBtn(p){
   if(!sleeper.me || ownerOf(p) !== sleeper.me) return '';
   const on = favs.has(p.id);
-  return `<button class="fav${on ? ' on' : ''}" data-fav="${p.id}" title="${on ? 'Favorit – wird nie zur Abgabe vorgeschlagen (antippen = entfernen)' : 'Als Favorit markieren (nie abgeben)'}">${on ? '★' : '☆'}</button>`;
+  return `<button class="fav${on ? ' on' : ''}" data-fav="${p.id}" title="${on ? 'Favorit – steht immer in der Startelf und wird nie zur Abgabe vorgeschlagen (antippen = entfernen)' : 'Als Favorit markieren (immer aufstellen, nie abgeben)'}">${on ? '★' : '☆'}</button>`;
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-fav]'); if(!b) return;
@@ -2173,7 +2175,8 @@ function optimizeLineup(maxMoves){
   const fxc = new Map(), fxOf = p => { if(!fxc.has(p.id)) fxc.set(p.id, gwFixture(p, gw)); return fxc.get(p.id); };
   const lockedOf = p => { const f = fxOf(p); return !!(f && (f.started || f.finished || koTime(f) <= now)); };
   const valOf = p => { const f = fxOf(p); if(f && f.finished){ const r = ((sleeper.real || {})[p.id] || {})[gw]; return r ? r.pts : 0; } return gwValue(p, gw); };
-  const cc = new Map(), cand = p => { if(!cc.has(p.id)){ const val = valOf(p); cc.set(p.id, { p, val, w: val + (p.score || 0) / 1000, pos: slPos(p) }); } return cc.get(p.id); };
+  // ★-Favoriten: sehr hohes Gewicht → stehen immer in der Startelf (sofern fit und mit Spiel im Spieltag)
+  const cc = new Map(), cand = p => { if(!cc.has(p.id)){ const val = valOf(p); cc.set(p.id, { p, val, w: val + (p.score || 0) / 1000 + (favs.has(p.id) && fxOf(p) ? 1000 : 0), pos: slPos(p) }); } return cc.get(p.id); };
   // aktuell in Sleeper gesetzte Startelf (gleiche Reihenfolge wie roster_positions)
   const myR = sleeper.rosters.find(r => r.owner === sleeper.me);
   const raw = (myR && myR.startersRaw) || [];
@@ -2245,8 +2248,8 @@ function optimizeLineup(maxMoves){
   return { gw, startSlots, cur, ownOnly, curStart, curTotal, moves, forced, cap, healthyIR, out, pool, lockedStart, lockedTotal, waiverUntil, valOf, lockedOf, fxOf, irTips };
 }
 function renderLineup(){
-  const el = $('lineupBody'); if(!el || $('viewLineup').hidden) return;
-  if(!players.length || !sleeper.rosters.length || !sleeper.me || !(sleeper.rosterPositions || []).length){ el.className = 'empty'; el.innerHTML = 'Lade deine Sleeper-Liga und wähle oben, wer du bist.'; return; }
+  const el = $('lineupBody'); if(!el || $('viewTeams').hidden) return;
+  if(!players.length || !sleeper.rosters.length || !sleeper.me || !(sleeper.rosterPositions || []).length){ el.className = 'empty'; el.innerHTML = 'Lade deine Sleeper-Liga und wähle oben, wer du bist.'; $('lineupSum').textContent = ''; return; }
   if(Date.now() - lineupTxAt > 10 * 60e3){ lineupTxAt = Date.now(); loadLineupTx().then(renderLineup); }
   el.className = '';
   let maxMoves = +(store.get('lineupMoves') ?? 3); if(!(maxMoves >= 0 && maxMoves <= 3)) maxMoves = 3;
@@ -2269,8 +2272,9 @@ function renderLineup(){
     x.line = line; cnt[line] = (cnt[line] || 0) + 1;
   }
   const formation = `${cnt.D}-${cnt.M}-${cnt.F}`;
-  let h = `<div class="lnhead"><div><h2 style="margin:0">Beste Aufstellung GW ${gw}</h2>
-    <div class="lnform">Formation <b>${formation}</b></div>
+  $('lineupSum').textContent = `GW ${gw} · ${formation} · Prognose ${fmt(tot,1)}`;
+  let h = `<div class="lnhead"><div>
+    <div class="lnform">GW ${gw} · Formation <b>${formation}</b></div>
     <div class="nodata">Werte = unsere Prognose nur für das Spiel in GW ${gw} (wie im Profil unter «Nächste Spiele – Prognose» bzw. Spalte xFP: inkl. Gegner, Einsatzchance, Form) · ohne Spiel = 0 · Stand ${new Date().toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}</div></div>
     <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
   // Spielfeld: klare Formation (Sturm oben, Torwart unten)
@@ -2319,7 +2323,7 @@ function renderLineup(){
     if(alt) tips.push(`<b>${esc(p.name)}</b> (Startchance ${Math.round((p.pStart || 0) * 100)} %): Aufstellung ca. 1 Std. vor Anpfiff (${koStr(t0)}) prüfen – steht er nicht in der Startelf, gegen <b>${esc(alt.q.name)}</b> (${koStr(alt.t)}) tauschen.`);
   }
   if(tips.length) h += `<div class="lnsec"><h3><span>Hinweise</span></h3>${tips.map(t => `<div class="lntip">⏱ ${t}</div>`).join('')}<div class="nodata">Sleeper sperrt jeden Spieler erst beim Anpfiff seines Spiels – bis dahin kannst du tauschen.</div></div>`;
-  h += `<div class="lnfoot"><a href="https://sleeper.com/leagues/${esc(sleeper.leagueId)}/team" target="_blank" rel="noopener">In Sleeper umstellen ↗</a><span class="nodata">☆ antippen = Favorit (★ wird nie zur Abgabe vorgeschlagen) · Doppeltipp = Profil</span></div>`;
+  h += `<div class="lnfoot"><a href="https://sleeper.com/leagues/${esc(sleeper.leagueId)}/team" target="_blank" rel="noopener">In Sleeper umstellen ↗</a><span class="nodata">☆ antippen = Favorit: ★ steht immer in der Startelf (wenn fit) und wird nie abgegeben · Doppeltipp = Profil</span></div>`;
   el.innerHTML = h;
   const sel = $('lnMoves'); if(sel) sel.onchange = e => { store.set('lineupMoves', +e.target.value); renderLineup(); };
 }
@@ -2656,8 +2660,8 @@ $('copyPrompt').addEventListener('click', async () => { coachMsg(await copyText(
 $('tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if(!b) return;
   view = b.dataset.tab; [...$('tabs').children].forEach(x => x.classList.toggle('on', x===b));
-  $('viewPlayers').hidden = view!=='players'; $('viewTeams').hidden = view!=='teams'; $('viewCoach').hidden = view!=='coach'; $('viewLineup').hidden = view!=='lineup';
-  if(view === 'lineup') renderLineup();
+  $('viewPlayers').hidden = view!=='players'; $('viewTeams').hidden = view!=='teams'; $('viewCoach').hidden = view!=='coach';
+  if(view === 'teams') renderLineup();
   store.set('view', view);
   if(view === 'coach') loadMemory();
 });
@@ -2670,7 +2674,9 @@ $('lgBody').addEventListener('click', e => {
   if(sleeper.me && teamA === sleeper.me) teamB = o; else teamA = o;
   renderTeams(); $('rosters').scrollIntoView({behavior:'smooth', block:'start'});
 });
-{ const v = store.get('view'); if(v === 'teams' || v === 'coach' || v === 'lineup') $('tabs').querySelector(`[data-tab=${v}]`).click(); }
+{ const v = store.get('view') === 'lineup' ? 'teams' : store.get('view'); if(v === 'teams' || v === 'coach') $('tabs').querySelector(`[data-tab=${v}]`).click(); }
+if(store.get('lineupOpen') === false) $('lineupCard').open = false;
+$('lineupCard').addEventListener('toggle', () => { store.set('lineupOpen', $('lineupCard').open); if($('lineupCard').open) renderLineup(); });
 $('leagueId').addEventListener('keydown', e => { if(e.key==='Enter') doLoadLeague(); });
 
 if(!store.get('league') && !new URLSearchParams(location.search).get('league')) store.set('foldLeague', true); // erste Nutzung: Liga-Eingabe offen
