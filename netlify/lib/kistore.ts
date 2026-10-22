@@ -40,7 +40,7 @@ export async function dueList(n = 15) {
 }
 
 // Harte Tageslimits (Schutz vor Kosten): zählt Aufrufe pro Tag und Art
-export const DAILY_LIMITS: Record<string, number> = { coach: 40, bot: 25, mem: 60 };
+export const DAILY_LIMITS: Record<string, number> = { coach: 40, bot: 25, mem: 60, match: 4 };
 export async function takeQuota(kind: string): Promise<{ ok: boolean; used: number; limit: number }> {
   const limit = DAILY_LIMITS[kind] ?? 0;
   const day = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
@@ -82,4 +82,18 @@ export async function saveFavs(k: string, ids: unknown, start: unknown) {
   const s = cleanIds(start), keep = cleanIds(ids).filter((x) => !s.includes(x));
   await store().setJSON(favKeyOf(k), { ids: keep, start: s, ts: Date.now() });
   return { ids: keep, start: s };
+}
+
+// KI-Spielvorschau pro Spieltag (alle Geräte sehen dieselbe Analyse)
+const clip = (v: unknown, n: number) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+export async function loadMatchAi(gw: number): Promise<any> {
+  return (await store().get(`match-ai-${gw}`, { type: "json" }).catch(() => null)) || null;
+}
+export async function saveMatchAi(gw: number, d: any) {
+  const items = (Array.isArray(d?.items) ? d.items : []).slice(0, 12)
+    .map((x: any) => ({ id: Number(x?.id) || 0, text: clip(x?.text, 700), tipp: clip(x?.tipp, 12), key: clip(x?.key, 80) }))
+    .filter((x: any) => x.id > 0 && x.text);
+  const out = { gw, ts: Date.now(), model: clip(d?.model, 80), cost: Number(d?.cost) || 0, items };
+  if (items.length) await store().setJSON(`match-ai-${gw}`, out);
+  return out;
 }

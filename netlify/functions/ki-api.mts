@@ -1,6 +1,6 @@
 // API für KI-Bewertungen: lesen, Beobachtungsliste setzen, fällige Spieler, Ergebnisse speichern
 import type { Config } from "@netlify/functions";
-import { loadRatings, saveWatch, dueList, mergeRatings, noteError, takeQuota, loadMemory, updateMemory, loadFavs, saveFavs } from "../lib/kistore.ts";
+import { loadRatings, saveWatch, dueList, mergeRatings, noteError, takeQuota, loadMemory, updateMemory, loadFavs, saveFavs, loadMatchAi, saveMatchAi } from "../lib/kistore.ts";
 
 const json = (status: number, body: unknown, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...extra } });
@@ -79,6 +79,19 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn ni
     } catch (e: any) { return json(200, { ok: false, reason: String(e?.message || e).slice(0, 120) }); }
   }
 
+  // KI-Spielvorschau: lesen (alle), speichern (nur die Edge-Funktion mit Geheimnis)
+  if (path.endsWith("/matches")) {
+    const gw = Number(url.searchParams.get("gw"));
+    if (req.method === "GET") { if (!(gw >= 1 && gw <= 38)) return json(400, { error: "gw fehlt" }); return json(200, (await loadMatchAi(gw)) || {}, { "cache-control": "no-store" }); }
+    if (req.method === "POST") {
+      const secret = Netlify.env.get("KI_SECRET");
+      if (!secret || req.headers.get("x-ki-secret") !== secret) return json(401, { error: "nicht erlaubt" });
+      const body: any = await req.json().catch(() => null);
+      const g = Number(body?.gw); if (!(g >= 1 && g <= 38)) return json(400, { error: "gw fehlt" });
+      return json(200, await saveMatchAi(g, body));
+    }
+  }
+
   // Favoriten: lesen und speichern (geräteübergreifend)
   if (path.endsWith("/fav")) {
     const k = String(url.searchParams.get("k") || "");
@@ -106,4 +119,4 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn ni
   return json(404, { error: "unbekannt" });
 };
 
-export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota", "/api/ki/memory", "/api/ki/remember", "/api/ki/fav"] };
+export const config: Config = { path: ["/api/ki/ratings", "/api/ki/watchlist", "/api/ki/due", "/api/ki/save", "/api/ki/quota", "/api/ki/memory", "/api/ki/remember", "/api/ki/fav", "/api/ki/matches"] };
