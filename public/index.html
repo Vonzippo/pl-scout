@@ -236,6 +236,15 @@ td.muted{color:var(--muted)}
 .mt-ai{font-size:13px;margin-top:6px;padding:6px 8px;background:var(--panel2);border-radius:8px;line-height:1.4}
 .mt-mine{font-size:12px;margin-top:5px;color:var(--muted)}
 .mt-mine span.in{color:#37e39b;font-weight:600}
+.mtbest{font-size:12px;padding:6px 8px;background:var(--panel2);border-radius:8px;margin-bottom:6px;display:flex;flex-direction:column;gap:2px}
+.mt-pos{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.pu{font-size:11px;padding:2px 6px;border-radius:6px;border:1px solid var(--line);white-space:nowrap}
+.pu.g{background:rgba(55,227,155,.14);border-color:rgba(55,227,155,.5);color:#37e39b}
+.pu.y{background:rgba(255,209,102,.12);border-color:rgba(255,209,102,.45);color:#ffd166}
+.pu.r{background:rgba(255,120,120,.12);border-color:rgba(255,120,120,.45);color:#ff8f8f}
+.mt-picks{font-size:12px;margin-top:5px}
+.mt-picks small{color:var(--muted)}
+.mt-picks .mine{color:#37e39b;font-weight:600}.mt-picks .free{color:#5aa9ff;font-weight:600}
 .mtfoot{font-size:11px;color:var(--muted);margin-top:10px;display:flex;flex-direction:column;gap:4px}
 .btn-mini{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;margin-left:6px}
 .lngain{color:var(--accent);font-weight:700;white-space:nowrap;margin-left:4px}
@@ -2495,7 +2504,17 @@ function renderMatches(){
   const ai = matchAi && matchAi.gw === gw ? Object.fromEntries((matchAi.items || []).map(x => [x.id, x])) : {};
   const xi = new Set(lastLineup ? [...lastLineup.cur.assign.filter(x => x.c).map(x => x.c.p.id), ...lastLineup.lockedStart.map(x => x.p.id)] : []);
   const mine = sleeper.me ? players.filter(p => ownerOf(p) === sleeper.me && !isOut(p)) : [];
-  let h = '', day = '';
+  // Fantasy-Vorteil je Position: Zu-Null-Chance (Abwehr/TW) und erwartete Tore (Angriff/Mittelfeld) aller Teams der Runde vergleichen
+  const lamOf = f => { const o = oddsFor(f); if(o) return { h: o.xg.h, a: o.xg.a }; const m = fxModel(f); return m ? { h: m.lh, a: m.la } : null; };
+  const units = [];
+  for(const f of list){ const L = lamOf(f); if(!L) continue; units.push({ f, tid: f.team_h, att: L.h, cs: Math.exp(-L.a), ga: L.a }, { f, tid: f.team_a, att: L.a, cs: Math.exp(-L.h), ga: L.h }); }
+  const third = Math.max(1, Math.ceil(units.length / 3));
+  const rankBy = k => { const s = [...units].sort((a,b) => b[k] - a[k]); s.forEach((u, i) => u['r_' + k] = i + 1); return s; };
+  const byCs = rankBy('cs'), byAtt = rankBy('att');
+  const lvl = r => r <= third ? 'g' : r > units.length - third ? 'r' : 'y';
+  const unitOf = (f, tid) => units.find(u => u.f === f && u.tid === tid);
+  const ownTag = p => { const o = ownerOf(p); return o === sleeper.me ? 'dein' : o ? String(sleeper.users[o] || 'vergeben').replace(/\s*[^\w\sÀ-ž'.-].*$/u, '').slice(0, 12) || 'vergeben' : 'frei'; };
+  let h = units.length ? `<div class="mtbest"><div><b>Beste Abwehr</b> (Zu-Null-Chance): ${byCs.slice(0, 4).map(u => `${esc(teams[u.tid].short)} ${pct(u.cs)} %`).join(' · ')}</div><div><b>Bester Angriff</b> (erwartete Tore): ${byAtt.slice(0, 4).map(u => `${esc(teams[u.tid].short)} ${fmt(u.att,1)}`).join(' · ')}</div></div>` : '', day = '';
   for(const f of list){
     const t = Date.parse(f.kickoff_time), d = new Date(t).toLocaleDateString('de-CH', { weekday:'long', day:'numeric', month:'long' });
     if(d !== day){ day = d; h += `<div class="mtday">${esc(d)}</div>`; }
@@ -2510,6 +2529,11 @@ function renderMatches(){
       <div class="mt-line">${o && o.odds ? `Quoten <b>${o.odds.h.toFixed(2)} · ${o.odds.d.toFixed(2)} · ${o.odds.a.toFixed(2)}</b> · ` : '<span class="nodata">Quoten folgen</span> · '}Tore erwartet <b>${G ? fmt(G.h,1) + ' : ' + fmt(G.a,1) : '–'}</b>${over != null ? ` · über 2.5: ${pct(over)} %` : ''}</div>
       ${o && m ? `<div class="mt-line nodata">Unser Modell: ${pct(m.h)} · ${pct(m.d)} · ${pct(m.a)} % · Tore ${fmt(m.lh,1)} : ${fmt(m.la,1)}</div>` : !o && m ? `<div class="mt-line nodata">Werte aus unserem Modell (xG-Stärken, Heimvorteil)</div>` : ''}
       ${x ? `<div class="mt-ai">${esc(x.text)}${x.tipp ? ` <b>Tipp ${esc(x.tipp)}</b>` : ''}${x.key ? ` · Schlüsselspieler: ${esc(x.key)}` : ''}</div>` : ''}
+      ${(() => { const uh = unitOf(f, f.team_h), ua = unitOf(f, f.team_a); if(!uh || !ua) return '';
+        const chip = (u, k, txt) => `<span class="pu ${lvl(u['r_' + k])}" title="Rang ${u['r_' + k]} von ${units.length} Teams dieser Runde">${esc(teams[u.tid].short)} ${txt}</span>`;
+        const picks = players.filter(p => (p.teamId === f.team_h || p.teamId === f.team_a) && !isOut(p)).map(p => ({ p, v: gwValue(p, gw) })).filter(x => x.v > 0).sort((a,b) => b.v - a.v).slice(0, 4);
+        return `<div class="mt-pos">${chip(uh, 'cs', 'Abwehr/TW · Zu-Null ' + pct(uh.cs) + ' %')}${chip(uh, 'att', 'Angriff · ' + fmt(uh.att,1) + ' Tore')}${chip(ua, 'cs', 'Abwehr/TW · Zu-Null ' + pct(ua.cs) + ' %')}${chip(ua, 'att', 'Angriff · ' + fmt(ua.att,1) + ' Tore')}</div>`
+          + (picks.length ? `<div class="mt-picks">Top-Picks: ${picks.map(x => `<span data-pid="${x.p.id}" class="${ownerOf(x.p) === sleeper.me ? 'mine' : !ownerOf(x.p) ? 'free' : ''}">${esc(x.p.name)} ${fmt(x.v,1)} <small>(${esc(SLOT_DE[natPos(x.p)] || '')}, ${esc(ownTag(x.p))})</small></span>`).join(' · ')}</div>` : ''); })()}
       ${my.length ? `<div class="mt-mine">Deine Spieler: ${my.map(p => `<span data-pid="${p.id}" class="${xi.has(p.id) ? 'in' : ''}">${esc(p.name)}</span>`).join(', ')}</div>` : ''}
     </div>`;
   }
@@ -2518,7 +2542,7 @@ function renderMatches(){
   const aiInfo = matchAiMsg ? `<span id="matchAiMsg">${matchAiBusy ? '⏳ ' : ''}${esc(matchAiMsg)}</span>`
     : matchAi && matchAi.gw === gw ? `Analyse: ${esc(matchAi.model || 'KI')} · ${hhmm(matchAi.ts)}${matchAi.cost ? ` · ${matchAi.cost.toFixed(3)} $` : ''}` : 'Noch keine KI-Analyse.';
   h += `<div class="mtfoot"><div>${src}</div><div>${aiInfo} ${matchAiBusy ? '' : `<button class="btn-mini" id="matchAiBtn">${matchAi && matchAi.gw === gw ? 'neu analysieren' : 'Analyse erstellen'}</button>`}</div>
-    <div>Balken = Siegchancen (Heim · Unentschieden · Gast), ohne Buchmacher-Marge. Erwartete Tore aus den Quoten (1X2 und über/unter 2.5) zurückgerechnet. Deine Spieler in Grün stehen in deiner besten Startelf.</div></div>`;
+    <div>Balken = Siegchancen (Heim · Unentschieden · Gast), ohne Buchmacher-Marge. Erwartete Tore aus den Quoten (1X2 und über/unter 2.5) zurückgerechnet. Positionen: grün = Top-Drittel aller Teams dieser Runde, gelb = Mittelfeld, rot = unteres Drittel (Abwehr/TW nach Zu-Null-Chance, Angriff nach erwarteten Toren). Top-Picks = höchste Prognose für dieses Spiel. Deine Spieler in Grün stehen in deiner besten Startelf.</div></div>`;
   el.innerHTML = h;
   const b = $('matchAiBtn'); if(b) b.onclick = () => { matchAiTried.delete(gw); genMatchAi(gw, list); };
 }
