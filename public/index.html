@@ -236,6 +236,9 @@ td.muted{color:var(--muted)}
 .mt-ai{font-size:13px;margin-top:6px;padding:6px 8px;background:var(--panel2);border-radius:8px;line-height:1.4}
 .mt-mine{font-size:12px;margin-top:5px;color:var(--muted)}
 .mt-mine span.in{color:#37e39b;font-weight:600}
+.pchip .pcm{font-size:10px;font-weight:700;border-radius:4px;padding:0 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcm.g{color:#37e39b}.pcm.y{color:#ffd166}.pcm.r{color:#ff8f8f}
+.mx.g{color:#37e39b}.mx.y{color:#ffd166}.mx.r{color:#ff8f8f}
 .mtbest{font-size:12px;padding:6px 8px;background:var(--panel2);border-radius:8px;margin-bottom:6px;display:flex;flex-direction:column;gap:2px}
 .mt-pos{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .pu{font-size:11px;padding:2px 6px;border-radius:6px;border:1px solid var(--line);white-space:nowrap}
@@ -630,9 +633,12 @@ function buildTeamModel(){
 function matchSetup(p, f){
   const { tm, avg } = teamModel; const T = tm[p.teamId], O = tm[f.opp];
   if(!T || !O) return null;
-  const lamFor = T.att * O.def / avg * (f.home ? 1.1 : 0.9);
-  const lamAg = O.att * T.def / avg * (f.home ? 0.9 : 1.1);
-  return { lamFor, lamAg, k: lamFor / T.att, kAg: lamAg / T.def };
+  let lamFor = T.att * O.def / avg * (f.home ? 1.1 : 0.9);
+  let lamAg = O.att * T.def / avg * (f.home ? 0.9 : 1.1);
+  // Matchup aus den Wettquoten: erwartete Tore beider Teams fliessen zu 75 % ein (Markt weiss mehr über Ausfälle und Form)
+  const od = typeof oddsForTeams === 'function' ? oddsForTeams(f.home ? p.teamId : f.opp, f.home ? f.opp : p.teamId, f.ko) : null;
+  if(od){ const mf = f.home ? od.xg.h : od.xg.a, ma = f.home ? od.xg.a : od.xg.h; lamFor = 0.75 * mf + 0.25 * lamFor; lamAg = 0.75 * ma + 0.25 * lamAg; }
+  return { lamFor, lamAg, k: lamFor / T.att, kAg: lamAg / T.def, odds: !!od };
 }
 function computeXfp(){
   const s = scoring;
@@ -1307,6 +1313,10 @@ async function refreshAll(){
   refreshing = true; renderDataStatus();
   try {
     await loadFPL();
+    // Matchups (Wettquoten + KI-Spielvorschau) früh laden, damit sie in Prognose und Aufstellung einfliessen
+    const extras = Promise.all([loadOdds(), loadMatchAi(nextGw)]);
+    const extrasLate = await Promise.race([extras.then(() => false), new Promise(r => setTimeout(() => r(true), 4000))]);
+    if(extrasLate) extras.then(() => renderAll());
     await loadHistory();
     const lid = $('leagueId').value.trim();
     if(lid){
@@ -2314,7 +2324,13 @@ function renderLineup(){
   const tot = r.cur.total + r.lockedTotal, own = r.ownOnly.total + r.lockedTotal;
   const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>`;
   const fxLine = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')} · ${koStr(koTime(f))}`; };
-  const sub = p => `${esc(teams[p.teamId]?.short || '')} · ${slPos(p).join('/')} · ${fxLine(p)} · Score ${p.score != null ? Math.round(p.score) : '–'}`;
+  const MU = gwMatchUnits(gw);
+  const muOf = p => { const f = r.fxOf(p); return f ? MU.unitOf(f, p.teamId) : null; };
+  const isBack = p => ['D','GK'].includes(natPos(p));
+  // Matchup: Siegchance, Zu-Null-Chance (wichtig für Abwehr/TW) und Team-Tore (wichtig für Angriff), farbig im Vergleich zur Runde
+  const muTxt = p => { const u = muOf(p); if(!u) return ''; const k = isBack(p) ? 'cs' : 'att';
+    return ` · <span class="mx ${MU.lvl(u['r_' + k])}">Sieg ${pct(u.win)} % · Zu-Null ${pct(u.cs)} % · Team-Tore ${fmt(u.att,1)}</span>`; };
+  const sub = p => `${esc(teams[p.teamId]?.short || '')} · ${slPos(p).join('/')} · ${fxLine(p)} · Score ${p.score != null ? Math.round(p.score) : '–'}${muTxt(p)}`;
   // Formation zählen (Flex-Slot zählt zur Linie des Spielers)
   const cnt = { GK:0, D:0, M:0, F:0 };
   for(const x of xiRows) if(x.p){
@@ -2326,11 +2342,11 @@ function renderLineup(){
   $('lineupSum').textContent = `GW ${gw} · ${formation} · Prognose ${fmt(tot,1)}`;
   let h = `<div class="lnhead"><div>
     <div class="lnform">GW ${gw} · Formation <b>${formation}</b></div>
-    <div class="nodata">Werte = unsere Prognose nur für das Spiel in GW ${gw} (wie im Profil unter «Nächste Spiele – Prognose» bzw. Spalte xFP: inkl. Gegner, Einsatzchance, Form) · ohne Spiel = 0 · Stand ${new Date().toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}</div></div>
+    <div class="nodata">Werte = unsere Prognose nur für das Spiel in GW ${gw} (wie im Profil unter «Nächste Spiele – Prognose» bzw. Spalte xFP: inkl. Gegner, Einsatzchance, Form) · ohne Spiel = 0 · Matchups aus ${MU.src === 'Quoten' ? 'Wettquoten (fliessen zu 75 % in die Prognose ein)' : 'unserem Modell – Wettquoten fliessen ein, sobald sie verfügbar sind'} · Stand ${new Date().toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}</div></div>
     <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
   // Spielfeld: klare Formation (Sturm oben, Torwart unten)
   const fxShort = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')}`; };
-  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span></div>`;
+  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span>${(() => { const u = muOf(x.p); if(!u) return ''; const k = isBack(x.p) ? 'cs' : 'att'; return `<span class="pcm ${MU.lvl(u['r_' + k])}">${k === 'cs' ? 'Zu-Null ' + pct(u.cs) + '%' : '⚽ ' + fmt(u.att,1) + ' Tore'}</span>`; })()}</div>`;
   const LINE_DE = { F:'Sturm', M:'Mittelfeld', D:'Abwehr', GK:'Tor' };
   h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">Prognose GW ${gw}: ${fmt(tot,1)}</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
     <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
@@ -2363,6 +2379,12 @@ function renderLineup(){
     return `<tr data-pid="${p.id}"><td class="l">${pl(p)}<div class="sub">${esc(teams[p.teamId]?.short || '')} · ${esc(outWhy(p))}${ret && Date.parse(ret) > Date.now() ? ' · zurück ca. ' + fmtDay(ret) : ''}</div></td><td class="nodata">–</td></tr>`; }).join('')}</tbody></table></div>`;
   // Hinweise
   const tips = [];
+  // Spielvorschau der KI: erwähnt sie einen Startelf-Spieler mit Ausfall/Rotation, als Hinweis zeigen
+  const aiBy = matchAi && matchAi.gw === gw ? Object.fromEntries((matchAi.items || []).map(x => [x.id, x])) : {};
+  const NEG = /(fraglich|fällt|fehlt|fehlen|verletz|gesperrt|sperre|angeschlagen|ausfall|rotation|rotier|geschont|bank|nicht im kader|unsicher|offen)/i;
+  for(const x of xiRows){ if(!x.p) continue; const f = r.fxOf(x.p), it = f && aiBy[f.id]; if(!it) continue;
+    const nm = norm(x.p.name), sent = String(it.text).split(/(?<=[.!?;])\s+/).find(t => norm(t).includes(nm) && NEG.test(t));
+    if(sent) tips.push(`📰 <b>${esc(x.p.name)}</b> – laut Spielvorschau: «${esc(sent.trim())}»`); }
   for(const p of r.healthyIR) tips.push(`<b>${esc(p.name)}</b> ist wieder fit – in Sleeper aus IR holen (braucht einen Kaderplatz, ist oben schon eingerechnet).`);
   for(const p of r.irTips) tips.push(`<b>${esc(p.name)}</b> fällt aus, belegt aber einen Kaderplatz – auf IR setzen, dann ist ein Platz frei für einen freien Spieler.`);
   for(const x of r.cur.assign){
@@ -2438,19 +2460,43 @@ function teamAbsences(tid){
     });
 }
 const teamTop = tid => players.filter(p => p.teamId === tid).sort((a,b) => (b.ptsReal ?? b.pts ?? 0) - (a.ptsReal ?? a.pts ?? 0)).slice(0, 2).map(p => p.name);
+let oddsIndex = null;
 async function loadOdds(){
   if(oddsData && Date.now() - oddsAt < 20 * 60e3) return;
   oddsAt = Date.now();
   try { oddsData = await getJSON('/api/odds'); } catch(e){ oddsData = { rows: [], errors: [String(e.message || e)] }; }
+  buildOddsIndex();
+}
+function buildOddsIndex(){
+  oddsIndex = {}; if(!oddsData || !oddsData.rows) return;
+  const byKey = {}; for(const id in teams) byKey[teamKey(teams[id].name)] = +id;
+  for(const r of oddsData.rows){ const h = byKey[r.hk], a = byKey[r.ak]; if(h && a) (oddsIndex[h + '-' + a] ||= []).push(r); }
+}
+function oddsForTeams(h, a, ko){
+  const rs = oddsIndex && oddsIndex[h + '-' + a]; if(!rs) return null;
+  return rs.find(r => !r.ko || !ko || Math.abs(r.ko - ko) < 36 * 3600e3) || null;
 }
 async function loadMatchAi(gw){
   matchAiGw = gw;
   try { const j = await getJSON('/api/ki/matches?gw=' + gw + '&t=' + Date.now()); matchAi = j && j.items && j.items.length ? j : null; } catch(e){ matchAi = null; }
 }
-function oddsFor(f){
-  if(!oddsData || !oddsData.rows || !teams[f.team_h] || !teams[f.team_a]) return null;
-  const hk = teamKey(teams[f.team_h].name), ak = teamKey(teams[f.team_a].name), t = Date.parse(f.kickoff_time);
-  return oddsData.rows.find(r => r.hk === hk && r.ak === ak && (!r.ko || !t || Math.abs(r.ko - t) < 36 * 3600e3)) || null;
+function oddsFor(f){ return oddsForTeams(f.team_h, f.team_a, Date.parse(f.kickoff_time)); }
+// Matchup-Infos aller Teams einer Runde: Siegchance, Zu-Null-Chance, erwartete Tore (Quoten, sonst unser Modell) + Rang im Vergleich
+function gwMatchUnits(gw){
+  const list = (allFixtures || []).filter(f => f.event === gw && f.kickoff_time);
+  const units = [];
+  for(const f of list){
+    const o = oddsFor(f), m = fxModel(f), L = o ? { h: o.xg.h, a: o.xg.a } : m ? { h: m.lh, a: m.la } : null; if(!L) continue;
+    const P = o ? o.p : poisOutcome(L.h, L.a);
+    units.push({ f, tid: f.team_h, att: L.h, cs: Math.exp(-L.a), ga: L.a, win: P.h, draw: P.d, lose: P.a, src: o ? 'Quoten' : 'Modell' },
+               { f, tid: f.team_a, att: L.a, cs: Math.exp(-L.h), ga: L.h, win: P.a, draw: P.d, lose: P.h, src: o ? 'Quoten' : 'Modell' });
+  }
+  const third = Math.max(1, Math.ceil(units.length / 3));
+  const rankBy = k => { const s = [...units].sort((a,b) => b[k] - a[k]); s.forEach((u, i) => u['r_' + k] = i + 1); return s; };
+  const byCs = rankBy('cs'), byAtt = rankBy('att');
+  const lvl = r => r <= third ? 'g' : r > units.length - third ? 'r' : 'y';
+  const unitOf = (f, tid) => units.find(u => u.f === f && u.tid === tid) || null;
+  return { units, byCs, byAtt, lvl, unitOf, n: units.length, src: units.some(u => u.src === 'Quoten') ? 'Quoten' : 'Modell' };
 }
 const pct = x => Math.round((x || 0) * 100);
 function matchDataText(list){
@@ -2495,8 +2541,8 @@ function renderMatches(){
   const first = Date.parse(list[0].kickoff_time), last = Date.parse(list[list.length - 1].kickoff_time);
   $('matchSum').textContent = `GW ${gw} · ${list.length} Spiele · ${koStr(first)} – ${koStr(last)}`;
   if($('viewTeams').hidden || !$('matchCard').open) return;
-  if(!oddsData || Date.now() - oddsAt > 20 * 60e3){ if(!loadOdds._p) loadOdds._p = loadOdds().finally(() => { loadOdds._p = null; renderMatches(); }); }
-  if(matchAiGw !== gw && !loadMatchAi._p) loadMatchAi._p = loadMatchAi(gw).finally(() => { loadMatchAi._p = null; renderMatches(); });
+  if(!oddsData || Date.now() - oddsAt > 20 * 60e3){ if(!loadOdds._p) loadOdds._p = loadOdds().finally(() => { loadOdds._p = null; renderAll(); }); }
+  if(matchAiGw !== gw && !loadMatchAi._p) loadMatchAi._p = loadMatchAi(gw).finally(() => { loadMatchAi._p = null; renderMatches(); renderLineup(); });
   // KI-Vorschau automatisch erstellen, wenn keine oder älter als 12 Std. (einmal pro Seitenaufruf, mit Tageslimit auf dem Server)
   const stale = !matchAi || matchAi.gw !== gw || Date.now() - matchAi.ts > 12 * 3600e3;
   if(stale && oddsData && matchAiGw === gw && !loadMatchAi._p && !matchAiBusy && !matchAiTried.has(gw) && players.length && list.some(f => !f.started)) genMatchAi(gw, list);
@@ -2505,14 +2551,7 @@ function renderMatches(){
   const xi = new Set(lastLineup ? [...lastLineup.cur.assign.filter(x => x.c).map(x => x.c.p.id), ...lastLineup.lockedStart.map(x => x.p.id)] : []);
   const mine = sleeper.me ? players.filter(p => ownerOf(p) === sleeper.me && !isOut(p)) : [];
   // Fantasy-Vorteil je Position: Zu-Null-Chance (Abwehr/TW) und erwartete Tore (Angriff/Mittelfeld) aller Teams der Runde vergleichen
-  const lamOf = f => { const o = oddsFor(f); if(o) return { h: o.xg.h, a: o.xg.a }; const m = fxModel(f); return m ? { h: m.lh, a: m.la } : null; };
-  const units = [];
-  for(const f of list){ const L = lamOf(f); if(!L) continue; units.push({ f, tid: f.team_h, att: L.h, cs: Math.exp(-L.a), ga: L.a }, { f, tid: f.team_a, att: L.a, cs: Math.exp(-L.h), ga: L.h }); }
-  const third = Math.max(1, Math.ceil(units.length / 3));
-  const rankBy = k => { const s = [...units].sort((a,b) => b[k] - a[k]); s.forEach((u, i) => u['r_' + k] = i + 1); return s; };
-  const byCs = rankBy('cs'), byAtt = rankBy('att');
-  const lvl = r => r <= third ? 'g' : r > units.length - third ? 'r' : 'y';
-  const unitOf = (f, tid) => units.find(u => u.f === f && u.tid === tid);
+  const MU = gwMatchUnits(gw), units = MU.units, byCs = MU.byCs, byAtt = MU.byAtt, lvl = MU.lvl, unitOf = MU.unitOf;
   const ownTag = p => { const o = ownerOf(p); return o === sleeper.me ? 'dein' : o ? String(sleeper.users[o] || 'vergeben').replace(/\s*[^\w\sÀ-ž'.-].*$/u, '').slice(0, 12) || 'vergeben' : 'frei'; };
   let h = units.length ? `<div class="mtbest"><div><b>Beste Abwehr</b> (Zu-Null-Chance): ${byCs.slice(0, 4).map(u => `${esc(teams[u.tid].short)} ${pct(u.cs)} %`).join(' · ')}</div><div><b>Bester Angriff</b> (erwartete Tore): ${byAtt.slice(0, 4).map(u => `${esc(teams[u.tid].short)} ${fmt(u.att,1)}`).join(' · ')}</div></div>` : '', day = '';
   for(const f of list){
@@ -2755,7 +2794,7 @@ window.addEventListener('popstate', () => { if(!$('pv').hidden){ pvPushed = fals
 window.plOpenPlayer = openPlayer;
 window.plExport = () => players.map(p => ({ id:p.id, sid:(sleeper.sidByFpl||{})[p.id]||'', name:p.full, web:p.name, pos:p.pos, club:teams[p.teamId]?.short, score:p.score, base:p.scoreBase, prog:p.prog, progOwn:p.progOwn, xfp:p.xfp, xfpOwn:p.xfpOwn, floor:p.floor, ceil:p.ceil, pStart:p.pStart, slp:p.slp, vorp:p.vorp, l10:p.l10, l3:p.l3, pts90:p.pts90, min:p.minutes, minL5:p.minL5, past:p.pastScore, comp:p.comp, owner:ownerOf(p)||'', status:p.status, chance:p.chance, news:p.news, xMin:p.xMin, ki:(kiOf(p)||{}).t||'', parts:(p.progParts||[]).map(x => ({ gw:x.gw, opp:teams[x.opp]?.short, home:x.home, pts:+x.pts.toFixed(2), cs:+x.cs.toFixed(2), tore:+x.tore.toFixed(2) })), log:(p.log||[]).slice(-4).map(g => [g.gw, g.min, +(+g.pts).toFixed(1)]) }));
 window.plLineup = (n = 3) => ({ r: optimizeLineup(n), slotAllows, isOut, favs, starts, ownerOf }); // Test/Diagnose
-window.plMeta = () => ({ nextGw, gwState, me: sleeper.me, leagueId: sleeper.leagueId, repl: replLevel });
+window.plMeta = () => ({ nextGw, gwState, me: sleeper.me, leagueId: sleeper.leagueId, repl: replLevel, odds: oddsIndex ? Object.keys(oddsIndex) : null, oddsRows: oddsData && oddsData.rows ? oddsData.rows.length : null, oddsAt, matchAiGw, matchAiItems: matchAi && matchAi.items ? matchAi.items.length : 0 });
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closePlayer(); });
 $('pv').addEventListener('click', e => {
   if(e.target === $('pv') || e.target.closest('[data-pvclose]')) return closePlayer();
@@ -2912,6 +2951,7 @@ for(const id of ['foldTop','foldKi','foldFilter','foldMem','foldLeague']){ const
     loadKi().then(renderAll);
     loadPrior().then(renderAll);
     loadPastSl().then(renderAll);
+    Promise.all([loadOdds(), loadMatchAi(nextGw)]).then(renderAll); // Matchups fliessen in Prognose und Aufstellung ein
     loadHistory().then(async () => {
       renderAll();
       await calibrate();
