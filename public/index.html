@@ -1376,6 +1376,25 @@ async function loadSleeper(leagueId){
   sleeper.rosterPositions = league.roster_positions || [];
   sleeper.leagueSettings = league.settings || {};
   for(const r of sleeper.rosters) if(!sleeper.users[r.owner]) sleeper.users[r.owner] = 'Team '+r.rosterId;
+  // Sleepers Spieler-Verzeichnis ist teils veraltet (z. B. ID 1031 ist inzwischen James Trafford, im Verzeichnis aber noch
+  // «Nottingham Forest» als Team-Abwehr). Die Spielerdaten in den aktuellen Sleeper-Stats/-Prognosen haben deshalb Vorrang.
+  try {
+    const st = await getJSON('/api/sl/state/clubsoccer:epl');
+    const season = +st.season || new Date().getFullYear(), wk = Math.max(1, +st.week || 1);
+    const feeds = await Promise.allSettled([`projections/clubsoccer:epl/${season}/${wk}`, ...[wk - 1, wk - 2].filter(w => w >= 1).map(w => `stats/clubsoccer:epl/${season}/${w}`)]
+      .map(x => getJSON(`/api/sl/${x}?season_type=regular`)));
+    const isPl = x => x && SPOS[(x.fantasy_positions||[])[0] || x.position];
+    const lastToks = x => norm(x.last_name || x.full_name || '').split(' ').filter(t => t.length > 1);
+    let fixed = 0;
+    for(const f of feeds) if(f.status === 'fulfilled' && Array.isArray(f.value)) for(const e of f.value){
+      const pid = String(e.player_id), pl = e.player; if(!pl || !isPl(pl)) continue;
+      const cur = sp[pid];
+      if(cur && isPl(cur) && lastToks(pl).some(t => lastToks(cur).includes(t))) continue; // Verzeichnis stimmt
+      sp[pid] = { ...pl, player_id: pid, full_name: (pl.metadata && pl.metadata.full_name) || `${pl.first_name||''} ${pl.last_name||''}`.trim(), active: true };
+      fixed++;
+    }
+    sleeper.fixedPlayers = fixed;
+  } catch(e){ console.warn('Sleeper-Korrektur', e); }
 
   const ownerBySleeper = {};
   for(const r of sleeper.rosters) for(const pid of r.players) ownerBySleeper[pid] = r.owner;

@@ -20,7 +20,7 @@ async function get(url: string, ms = 7000): Promise<any> {
 type P = { n: string; t: string; p: string[]; inj?: string; ret?: string; since?: string; tc?: number; num?: number; age?: number };
 async function playersMin(): Promise<Record<string, P>> {
   const s = getStore({ name: "sleeper-cache" });
-  const c: any = await s.get("players_min_v1", { type: "json" }).catch(() => null);
+  const c: any = await s.get("players_min_v2", { type: "json" }).catch(() => null);
   if (c && Date.now() - c.ts < 3 * 3600e3) return c.p;
   try {
     const all = await get(V1 + "players/clubsoccer:epl", 15000);
@@ -32,7 +32,23 @@ async function playersMin(): Promise<Record<string, P>> {
         ...(x.injury_status ? { inj: x.injury_status, ret: md.soccer_injury_return_date, since: md.soccer_injury_status_started_at } : {}),
         ...(x.team_changed_at ? { tc: x.team_changed_at } : {}), ...(x.number ? { num: x.number } : {}), ...(x.age ? { age: x.age } : {}) };
     }
-    await s.setJSON("players_min_v1", { ts: Date.now(), p }).catch(() => {});
+    // Veraltete Verzeichnis-Einträge mit den Spielerdaten aus aktuellen Stats/Prognosen korrigieren
+    // (z. B. ID 1031 ist inzwischen James Trafford, im Verzeichnis aber noch «Nottingham Forest» als Team-Abwehr)
+    try {
+      const st: any = await get(V1 + "state/clubsoccer:epl");
+      const season = Number(st.season) || new Date().getFullYear(), wk = Math.max(1, Number(st.week) || 1);
+      const urls = [`projections/clubsoccer:epl/${season}/${wk}`, ...[wk - 1, wk - 2].filter((w) => w >= 1).map((w) => `stats/clubsoccer:epl/${season}/${w}`)];
+      const feeds = await Promise.allSettled(urls.map((x) => get(`https://api.sleeper.com/${x}?season_type=regular`, 8000)));
+      const isPl = (x: any) => !!x && ["GK", "G", "D", "M", "F"].includes((x.fantasy_positions || [])[0] || x.position);
+      const toks = (v: string) => (v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter((t) => t.length > 1);
+      for (const f of feeds) if (f.status === "fulfilled" && Array.isArray(f.value)) for (const e of f.value as any[]) {
+        const id = String(e.player_id), pl = e.player; if (!pl || !isPl(pl)) continue;
+        const raw = (all as any)[id];
+        if (raw && isPl(raw) && toks(pl.last_name).some((t) => toks(raw.last_name || raw.full_name).includes(t))) continue;
+        p[id] = { n: pl.metadata?.full_name || `${pl.first_name || ""} ${pl.last_name || ""}`.trim(), t: pl.team_abbr || "", p: (pl.fantasy_positions || [pl.position]).filter(Boolean), ...(pl.injury_status ? { inj: pl.injury_status } : {}) };
+      }
+    } catch { /* Verzeichnis unverändert */ }
+    await s.setJSON("players_min_v2", { ts: Date.now(), p }).catch(() => {});
     return p;
   } catch (e) { if (c) return c.p; throw e; }
 }
