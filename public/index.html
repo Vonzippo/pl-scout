@@ -642,7 +642,9 @@ function computeXfp(){
     const sv90 = p.pos === 'GKP' ? per90(p, 'saves', 'saves') : 0, yc90 = per90(p, 'yellow', 'yellow');
     const LR = (s.lr && s.lr[p.pos]) || { min:0, xg:0, xa:0, tk:0, cbi:0, rec:0 };
     const def90 = per90(p, 'tackles', 'tackles') * (s.tackle + LR.tk) + per90(p, 'cbi', 'cbi') * (s.cbi + LR.cbi) + per90(p, 'recoveries', 'rec') * (s.recovery + LR.rec) + LR.min;
-    const G = s['goal_'+p.pos] || 0, CS = s['cs_'+p.pos] || 0, GC = s['gc_'+p.pos] || 0, A = s['assist_'+p.pos] || 0;
+    // Punkteregel der Position, auf der Sleeper ihn wertet (z. B. Gakpo: bei der PL Mittelfeld, bei Sleeper Sturm)
+    const sPos = (sleeper.scorePos || {})[p.id] || p.pos; p.scorePos = sPos;
+    const G = s['goal_'+sPos] || 0, CS = s['cs_'+sPos] || 0, GC = s['gc_'+sPos] || 0, A = s['assist_'+sPos] || 0;
     const fxAll = (fixturesByTeam[p.teamId] || []).filter(f => f.gw >= nextGw).slice(0, 4); // nächste 4 Spiele
     const models = fxAll.map(f => ({ f, m: matchSetup(p, f) })).filter(x => x.m);
     const expPts = m => {
@@ -1130,7 +1132,8 @@ async function loadSleeperStats(){
   try { const st = await getJSON('/api/sl/state/clubsoccer:epl'); season = +st.season || season; week = +st.week || week; } catch(e){}
   const weeks = Array.from({ length: week }, (_, i) => i + 1);
   const res = await Promise.allSettled(weeks.map(w => getJSON(`/api/sl/stats/clubsoccer:epl/${season}/${w}?season_type=regular`)));
-  const real = {}, have = [], unm = {}, raw = {};
+  const real = {}, have = [], unm = {}, raw = {}, scorePos = {};
+  const SCORE_POS = { gk:'GKP', d:'DEF', m:'MID', f:'FWD' };
   const RAWK = ['min','gs','p_att','kp','sat','sot','tkw','tk','int','clr','aer','bs','sv','xg','xa','g','at','dis','acnc','yc','rc'];
   res.forEach((r, i) => {
     if(r.status !== 'fulfilled' || !Array.isArray(r.value) || !r.value.length) return;
@@ -1139,6 +1142,8 @@ async function loadSleeperStats(){
       if(!e || !e.stats || !num(e.stats.min)) continue;
       const fid = sleeper.matchPid(String(e.player_id));
       if(fid == null){ const pp = leaguePoints(e.stats, ss); if(pp) unm[e.player_id] = { name: `${e.player?.first_name||''} ${e.player?.last_name||''}`.trim(), team: e.player?.team_abbr || '', pts: (unm[e.player_id]?.pts || 0) + pp }; continue; }
+      // Sleeper wertet jeden Spieler fest auf einer Position (unabhängig vom Slot in der Aufstellung) – steckt in den pos_-Schlüsseln
+      const sp0 = Object.keys(e.stats).find(k => k.startsWith('pos_')); if(sp0 && SCORE_POS[sp0.split('_')[1]]) scorePos[fid] = SCORE_POS[sp0.split('_')[1]];
       const cur = (real[fid] ||= {})[weeks[i]];
       const add = { pts: leaguePoints(e.stats, ss), min: num(e.stats.min), gs: num(e.stats.gs) };
       (real[fid])[weeks[i]] = cur ? { pts: cur.pts + add.pts, min: cur.min + add.min, gs: Math.max(cur.gs, add.gs) } : add; // Doppelspieltag
@@ -1147,7 +1152,7 @@ async function loadSleeperStats(){
       if(e.opponent) rw.opp = e.opponent;
     }
   });
-  sleeper.real = real; sleeper.realWeeks = have; sleeper.rawStats = raw;
+  sleeper.real = real; sleeper.realWeeks = have; sleeper.rawStats = raw; sleeper.scorePos = scorePos;
   sleeper.unmatchedStats = Object.values(unm).sort((a,b) => b.pts - a.pts);
   dataStatus.stats = { at: Date.now(), ok: have.length > 0, info: `Spieltage ${have.length ? have[0]+'–'+have[have.length-1] : '–'} · ${Object.keys(real).length} Spieler mit echten Punkten` };
   // Sleeper-Prognose für den nächsten Spieltag
@@ -2112,6 +2117,8 @@ function slotAllows(slot){
   for(let i = 0; i < pre.length; i++){ if(pre.startsWith('GK', i)){ out.push('GK'); i++; } else out.push(pre[i]); }
   return out;
 }
+// eigentliche Position: wie Sleeper ihn wertet (sonst PL-Position), z. B. Gakpo = Sturm
+const natPos = p => { const n = SLP_FROM_FPL[p.scorePos || p.pos], sp = slPos(p); return sp.includes(n) ? n : sp[0]; };
 const slotLabel = sl => sl.endsWith('_FLEX') ? slotAllows(sl).map(x => SLOT_DE[x] || x).join('/') : (SLOT_DE[sl] || sl);
 function isOut(p){ // fällt aus (Verletzung/Sperre) – IR allein zählt nicht: wer wieder fit ist, muss aus IR zurück
   if(['i','s','u','n'].includes(p.status) || p.chance === 0) return true;
@@ -2160,7 +2167,8 @@ function bestXI(cands, slots){
   if(!slots.length) return { total:0, assign:[] };
   const m = cands.length + slots.length; // zusätzliche Spalten = Slot bleibt leer
   const cost = slots.map(sl => { const ok = slotAllows(sl), row = new Array(m).fill(0);
-    cands.forEach((c, j) => { row[j] = c.pos.some(x => ok.includes(x)) ? -c.w : 1e6; }); return row; });
+    // bei gleichen Punkten: Spieler auf seiner eigentlichen Position einsetzen (z. B. F/M-Stürmer in den Sturm)
+    cands.forEach((c, j) => { row[j] = c.pos.some(x => ok.includes(x)) ? -(c.w + (sl === c.nat ? 0.002 : ok.includes(c.nat) ? 0.001 : 0)) : 1e6; }); return row; });
   const a = hungarian(cost);
   const assign = slots.map((sl, i) => ({ slot: sl, c: a[i] >= 0 && a[i] < cands.length && cost[i][a[i]] < 1e5 ? cands[a[i]] : null }));
   return { total: assign.reduce((t,x) => t + (x.c ? x.c.val : 0), 0), assign };
@@ -2191,7 +2199,7 @@ function optimizeLineup(maxMoves){
   const lockedOf = p => { const f = fxOf(p); return !!(f && (f.started || f.finished || koTime(f) <= now)); };
   const valOf = p => { const f = fxOf(p); if(f && f.finished){ const r = ((sleeper.real || {})[p.id] || {})[gw]; return r ? r.pts : 0; } return gwValue(p, gw); };
   // ★ immer aufstellen: sehr hohes Gewicht → steht immer in der Startelf (sofern fit und mit Spiel im Spieltag)
-  const cc = new Map(), cand = p => { if(!cc.has(p.id)){ const val = valOf(p); cc.set(p.id, { p, val, w: val + (p.score || 0) / 1000 + (starts.has(p.id) && fxOf(p) ? 1000 : 0), pos: slPos(p) }); } return cc.get(p.id); };
+  const cc = new Map(), cand = p => { if(!cc.has(p.id)){ const val = valOf(p); cc.set(p.id, { p, val, w: val + (p.score || 0) / 1000 + (starts.has(p.id) && fxOf(p) ? 1000 : 0), pos: slPos(p), nat: natPos(p) }); } return cc.get(p.id); };
   // aktuell in Sleeper gesetzte Startelf (gleiche Reihenfolge wie roster_positions)
   const myR = sleeper.rosters.find(r => r.owner === sleeper.me);
   const raw = (myR && myR.startersRaw) || [];
@@ -2283,7 +2291,7 @@ function renderLineup(){
   const cnt = { GK:0, D:0, M:0, F:0 };
   for(const x of xiRows) if(x.p){
     let line = x.slot;
-    if(x.slot.endsWith('_FLEX')){ const ok = slotAllows(x.slot), fp = SLP_FROM_FPL[x.p.pos], ps = slPos(x.p).filter(y => ok.includes(y)); line = ps.includes(fp) ? fp : (ps[0] || fp); }
+    if(x.slot.endsWith('_FLEX')){ const ok = slotAllows(x.slot), fp = natPos(x.p), ps = slPos(x.p).filter(y => ok.includes(y)); line = ps.includes(fp) ? fp : (ps[0] || fp); }
     x.line = line; cnt[line] = (cnt[line] || 0) + 1;
   }
   const formation = `${cnt.D}-${cnt.M}-${cnt.F}`;
