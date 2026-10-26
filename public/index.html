@@ -270,6 +270,8 @@ td.muted{color:var(--muted)}
 .xib{display:inline-block;font-size:9px;font-weight:800;line-height:14px;padding:0 4px;border-radius:4px;margin-left:4px;vertical-align:1px;white-space:nowrap;cursor:help}
 .xib.s{background:#14532d;color:#bbf7d0}.xib.b{background:#7f1d1d;color:#fecaca}
 td .sub.phs{color:#c4b5fd;white-space:normal}
+.ghb{display:inline-block;margin-left:3px;font-size:.9em;line-height:1;cursor:help;vertical-align:baseline}
+.pchip .pcn .ghb{font-size:10px;margin:0 2px 0 0;vertical-align:1px}
 .phlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:2px 16px;margin:10px 0;font-size:13px}
 .phlist div{display:flex;gap:8px;align-items:baseline;border-bottom:1px solid var(--line);padding:4px 0;min-width:0}
 .phlist div span:first-child{flex:1;min-width:0}.phlist b{flex:none;min-width:2.6em;text-align:right;font-variant-numeric:tabular-nums}.phlist b.neg{color:var(--bad)}
@@ -1270,6 +1272,13 @@ function phRates(ws, prior = 270){
     out.set(p, { off: (a.o + po * prior) / (a.m + prior) * 90, def: (a.d + pd * prior) / (a.m + prior) * 90 }); }
   return out;
 }
+// 👻 neben dem Namen: Ø mehr als 7.5 Phantom-Punkte pro Einsatz (ab 3 Einsätzen)
+const PH_GHOST = 7.5;
+function ghost(p){
+  const x = phStats(p); if(!x || x.n < 3 || !(x.avg > PH_GHOST)) return '';
+  const src = x.by.filter(b => b.v >= 0.3).slice(0, 3).map(b => `${PH_SHORT[b.k] || b.k} ${fmt(b.v, 1)}`).join(' · ');
+  return `<span class="ghb" title="${esc(`Phantom-Spieler: Ø ${fmt(x.avg, 1)} Phantom-Punkte pro Einsatz${src ? ' (' + src + ')' : ''}`)}">👻</span>`;
+}
 const phWeek = (p, w) => { const x = ((sleeper.phantom || {})[p.id] || {})[w], r = ((sleeper.real || {})[p.id] || {})[w]; return x && r && r.min > 0 ? x : null; };
 const r2s = x => String(Math.round(x * 100) / 100), sgn2 = x => (x > 0 ? '+' : '') + r2s(x);
 const phWhy = by => Object.entries(by).sort((a, b) => Math.abs(b[1][1]) - Math.abs(a[1][1])).map(([k, [n, v]]) => `${r2s(n)} ${PH_SHORT[k] || k} ${sgn2(v)}`).join(' · ');
@@ -1784,7 +1793,7 @@ function nameCell(p){
   const o = Object.keys(sleeper.users).length ? ownerOf(p) : undefined;
   const own = o === undefined && !Object.keys(sleeper.users).length ? '' :
     (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
-  return `<div class="nm">${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}${euroBadge(p)}${xiBadge(p)}</div>
+  return `<div class="nm">${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>${ghost(p)} ${news}${spHtml(p)}${euroBadge(p)}${xiBadge(p)}</div>
     <div class="sub"><b>${esc(teams[p.teamId].short)}</b>${own}<span class="fdr sm">${opp}</span></div>`;
 }
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
@@ -1873,7 +1882,7 @@ function renderTable(){
     return `<tr class="${cls}" data-pid="${p.id}">${cols.map(c => `<td class="${c.l?'l':''} ${c.cls||''}">${c.cell(p)}</td>`).join('')}</tr>`;
   }).join('');
   $('count').innerHTML = state.tm === 'ph'
-    ? `${rows.length} Spieler · <b>👻 Phantom-Punkte</b> = alle Punkte ausser Toren, Assists, Zu-Null, Gegentoren, Karten und Penaltys – die Punkte, die man nicht auf dem Schirm hat. Eure Liga-Regeln: ${esc(phRules()) || '–'}. Ø = pro Einsatz in dieser Saison (exakt aus den Sleeper-Stats), Ø Klar = die sichtbaren Punkte, Ø Total = beides. Viele Phantom-Punkte = sicherer Boden, der Spieler punktet auch ohne Tor. Maus über eine Zahl bzw. Doppeltipp = Herkunft im Detail.`
+    ? `${rows.length} Spieler · <b>👻 Phantom-Punkte</b> = alle Punkte ausser Toren, Assists, Zu-Null, Gegentoren, Karten und Penaltys – die Punkte, die man nicht auf dem Schirm hat. Eure Liga-Regeln: ${esc(phRules()) || '–'}. Ø = pro Einsatz in dieser Saison (exakt aus den Sleeper-Stats), Ø Klar = die sichtbaren Punkte, Ø Total = beides. Viele Phantom-Punkte = sicherer Boden, der Spieler punktet auch ohne Tor. 👻 neben dem Namen (überall auf der Seite) = mehr als ${fmt(PH_GHOST, 1)} Phantom-Punkte pro Einsatz (ab 3 Einsätzen). Maus über eine Zahl bzw. Doppeltipp = Herkunft im Detail.`
     : `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · <b>Doppeltipp = Spielerprofil</b> · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele (40/30/20/10 %)`;
   renderCmpPill();
 }
@@ -1904,7 +1913,7 @@ function renderCompare(){
     ['Pkt/90','pts90',2],['xPkt/90','xpts90',2],['Punkte','pts',0],['Minuten','minutes',0],
     ['Tore','goals',0],['xG','xg',2],['Assists','assists',0],['xA','xa',2],['Zu-Null','cs',0],['Paraden','saves',0],['FPL-Form','form',1]
   ];
-  let h = `<table><thead><tr><th class="l"></th>${sel.map(p=>`<th><a href="#" data-pv="${p.id}" title="Spielerprofil öffnen">${esc(p.name)}</a> <button class="x" data-rm="${p.id}" title="entfernen">✕</button><br><small style="color:var(--muted)">${esc(teams[p.teamId].short)} · ${p.pos}</small></th>`).join('')}</tr></thead><tbody>`;
+  let h = `<table><thead><tr><th class="l"></th>${sel.map(p=>`<th><a href="#" data-pv="${p.id}" title="Spielerprofil öffnen">${esc(p.name)}</a>${ghost(p)} <button class="x" data-rm="${p.id}" title="entfernen">✕</button><br><small style="color:var(--muted)">${esc(teams[p.teamId].short)} · ${p.pos}</small></th>`).join('')}</tr></thead><tbody>`;
   for(const [label,k,d] of metrics){
     const max = Math.max(...sel.map(p=>p[k]));
     h += `<tr><td class="l">${label}</td>${sel.map(p=>`<td class="${sel.length>1&&p[k]===max&&max>0?'best':''}">${fmt(p[k],d)}</td>`).join('')}</tr>`;
@@ -1938,7 +1947,7 @@ function renderTips(){
   if(!tips.length){ el.className='empty'; el.innerHTML = mine.length ? 'Keine freien Spieler mit klar besserer Prognose gefunden. 👍' : 'Für dein Team wurden keine Spieler zugeordnet.'; return; }
   el.className='tips';
   el.innerHTML = '<ul style="margin:0;padding-left:18px">' + tips.slice(0,6).map(t =>
-    `<li><span class="pos ${t.pos}">${t.pos}</span> <b>${esc(t.in.name)}</b> (${esc(teams[t.in.teamId].short)}, ${fmt(t.in.proj)}) für ${esc(t.out.name)} (${fmt(t.out.proj)}) · <b>+${fmt(t.gain)}</b> Pkt</li>`).join('') + '</ul>';
+    `<li><span class="pos ${t.pos}">${t.pos}</span> <b>${esc(t.in.name)}</b>${ghost(t.in)} (${esc(teams[t.in.teamId].short)}, ${fmt(t.in.proj)}) für ${esc(t.out.name)}${ghost(t.out)} (${fmt(t.out.proj)}) · <b>+${fmt(t.gain)}</b> Pkt</li>`).join('') + '</ul>';
 }
 /* ---------- Premier-League-Tabelle & Teamstärken ---------- */
 // Schlüsselspieler: über wen laufen die Rollen eines Klubs?
@@ -1971,7 +1980,7 @@ function renderKeyPlayers(){
     const own = !Object.keys(sleeper.users).length ? '' : (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
     const chips = a.roles.map(r => `<span class="rchip${r.k==='sp'?' sp':''}" title="${r.sh != null ? Math.round(r.sh*100)+'% des Teams' : 'Standardschütze Nr. 1'}">${esc(r.lbl)}${r.sh != null ? ' '+Math.round(r.sh*100)+'%' : ''}</span>`).join('');
     return `<tr data-pid="${p.id}"><td class="l"><b>${esc(teams[tid].short)}</b></td>
-      <td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${own}${b ? `<div class="sub" style="font-size:11px;color:var(--muted)">2.: ${esc(b.p.name)} (${b.roles.length} Rollen)</div>` : ''}</td>
+      <td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span>${ghost(p)} ${own}${b ? `<div class="sub" style="font-size:11px;color:var(--muted)">2.: ${esc(b.p.name)} (${b.roles.length} Rollen)</div>` : ''}</td>
       <td><b>${Math.round(a.share*100)}%</b></td><td class="l rchips">${chips}</td><td class="desk">${scoreHtml(p)}</td></tr>`;
   }).join('') || '<tr><td colspan="5" class="l nodata">Noch keine Saisondaten.</td></tr>';
 }
@@ -2526,7 +2535,7 @@ function renderLineup(){
   xiRows.sort((a,b) => r.startSlots.indexOf(a.slot) - r.startSlots.indexOf(b.slot));
   const inXI = new Set(xiRows.filter(x => x.p).map(x => x.p.id));
   const tot = r.cur.total + r.lockedTotal, own = r.ownOnly.total + r.lockedTotal;
-  const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>${euroBadge(p)}${xiBadge(p)}`;
+  const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>${ghost(p)}${euroBadge(p)}${xiBadge(p)}`;
   const fxLine = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')} · ${koStr(koTime(f))}`; };
   const MU = gwMatchUnits(gw);
   const muOf = p => { const f = r.fxOf(p); return f ? MU.unitOf(f, p.teamId) : null; };
@@ -2550,7 +2559,7 @@ function renderLineup(){
     <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
   // Spielfeld: klare Formation (Sturm oben, Torwart unten)
   const fxShort = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')}`; };
-  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span>${(() => { const b = euroBadge(x.p); return b ? `<span class="pceu">${b}</span>` : ''; })()}${x.p.xi ? `<span class="pcxi">${xiBadge(x.p)}</span>` : ''}${(() => { const u = muOf(x.p); if(!u) return ''; const k = isBack(x.p) ? 'cs' : 'att'; return `<span class="pcm ${MU.lvl(u['r_' + k])}">${k === 'cs' ? 'Zu-Null ' + pct(u.cs) + '%' : '⚽ ' + fmt(u.att,1) + ' Tore'}</span>`; })()}</div>`;
+  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${ghost(x.p)}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span>${(() => { const b = euroBadge(x.p); return b ? `<span class="pceu">${b}</span>` : ''; })()}${x.p.xi ? `<span class="pcxi">${xiBadge(x.p)}</span>` : ''}${(() => { const u = muOf(x.p); if(!u) return ''; const k = isBack(x.p) ? 'cs' : 'att'; return `<span class="pcm ${MU.lvl(u['r_' + k])}">${k === 'cs' ? 'Zu-Null ' + pct(u.cs) + '%' : '⚽ ' + fmt(u.att,1) + ' Tore'}</span>`; })()}</div>`;
   const LINE_DE = { F:'Sturm', M:'Mittelfeld', D:'Abwehr', GK:'Tor' };
   h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">Prognose GW ${gw}: ${fmt(tot,1)}</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
     <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
@@ -2788,8 +2797,8 @@ function renderMatches(){
         const chip = (u, k, txt) => `<span class="pu ${lvl(u['r_' + k])}" title="Rang ${u['r_' + k]} von ${units.length} Teams dieser Runde">${esc(teams[u.tid].short)} ${txt}</span>`;
         const picks = players.filter(p => (p.teamId === f.team_h || p.teamId === f.team_a) && !isOut(p)).map(p => ({ p, v: gwValue(p, gw) })).filter(x => x.v > 0).sort((a,b) => b.v - a.v).slice(0, 4);
         return `<div class="mt-pos">${chip(uh, 'cs', 'Abwehr/TW · Zu-Null ' + pct(uh.cs) + ' %')}${chip(uh, 'att', 'Angriff · ' + fmt(uh.att,1) + ' Tore')}${chip(ua, 'cs', 'Abwehr/TW · Zu-Null ' + pct(ua.cs) + ' %')}${chip(ua, 'att', 'Angriff · ' + fmt(ua.att,1) + ' Tore')}</div>`
-          + (picks.length ? `<div class="mt-picks">Top-Picks: ${picks.map(x => `<span data-pid="${x.p.id}" class="${ownerOf(x.p) === sleeper.me ? 'mine' : !ownerOf(x.p) ? 'free' : ''}">${esc(x.p.name)} ${fmt(x.v,1)} <small>(${esc(SLOT_DE[natPos(x.p)] || '')}, ${esc(ownTag(x.p))})</small></span>`).join(' · ')}</div>` : ''); })()}
-      ${my.length ? `<div class="mt-mine">Deine Spieler: ${my.map(p => `<span data-pid="${p.id}" class="${xi.has(p.id) ? 'in' : ''}">${esc(p.name)}</span>`).join(', ')}</div>` : ''}
+          + (picks.length ? `<div class="mt-picks">Top-Picks: ${picks.map(x => `<span data-pid="${x.p.id}" class="${ownerOf(x.p) === sleeper.me ? 'mine' : !ownerOf(x.p) ? 'free' : ''}">${esc(x.p.name)}${ghost(x.p)} ${fmt(x.v,1)} <small>(${esc(SLOT_DE[natPos(x.p)] || '')}, ${esc(ownTag(x.p))})</small></span>`).join(' · ')}</div>` : ''); })()}
+      ${my.length ? `<div class="mt-mine">Deine Spieler: ${my.map(p => `<span data-pid="${p.id}" class="${xi.has(p.id) ? 'in' : ''}">${esc(p.name)}${ghost(p)}</span>`).join(', ')}</div>` : ''}
     </div>`;
   }
   const src = oddsData && oddsData.rows && oddsData.rows.length ? `Quoten: ${esc((oddsData.rows.find(r => list.some(f => oddsFor(f) === r)) || oddsData.rows[0]).src)} · Stand ${hhmm(oddsData.ts)}${oddsData.remaining ? ` · Kontingent ${esc(oddsData.remaining)}` : ''}`
@@ -3079,7 +3088,7 @@ async function openEvalTeam(kind, id){
     + list.map(a => { const p = byId[a.id], d = a.actual - a.pred;
       const cells = sel.length > 1 ? sel.map(g => { const r = a.by[g]; return `<td class="desk">${r ? `<b class="${dc(r.actual - r.pred)}">${fmt(r.actual,0)}</b><div class="sub">${fmt(r.pred,1)}</div>` : D.per[g].known.has(a.id) ? '<span class="nodata" title="Ausfall war vorher bekannt – zählt nicht">Ausfall</span>' : '–'}</td>`; }).join('') : '';
       const mob = sel.length > 1 ? `<div class="sub mob">${sel.map(g => { const r = a.by[g]; return r ? `GW${g} ${fmt(r.pred,0)}→${fmt(r.actual,0)}` : D.per[g].known.has(a.id) ? `GW${g} Ausfall` : ''; }).filter(Boolean).join(' · ')}</div>` : '';
-      return `<tr data-cpid="${a.id}" style="cursor:pointer"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span><div class="sub">${esc(teams[p.teamId]?.short || '')} · ${SLOT_DE[natPos(p)] || ''}${!a.games ? ' · kein Einsatz' : ''}</div>${mob}</td>${cells}<td>${fmt(a.pred,1)}</td><td><b>${fmt(a.actual,1)}</b></td><td class="${dc(d / Math.max(1, a.games || 1))}">${sg(d)}</td></tr>`; }).join('')
+      return `<tr data-cpid="${a.id}" style="cursor:pointer"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span>${ghost(p)}<div class="sub">${esc(teams[p.teamId]?.short || '')} · ${SLOT_DE[natPos(p)] || ''}${!a.games ? ' · kein Einsatz' : ''}</div>${mob}</td>${cells}<td>${fmt(a.pred,1)}</td><td><b>${fmt(a.actual,1)}</b></td><td class="${dc(d / Math.max(1, a.games || 1))}">${sg(d)}</td></tr>`; }).join('')
     + `</tbody></table></div>${sel.length > 1 ? '<div class="nodata desk">Pro Spieltag: oben echte Punkte, darunter die Prognose.</div>' : ''}</div>`;
   $('evPopBody').innerHTML = h;
   closeClub();
@@ -3139,7 +3148,7 @@ function renderEval(){
   const sumMode = sel.length > 1;
   h += `<div class="evsec"><h3>Spieler <small>${sumMode ? `Summe GW ${sel[0]}–${sel[sel.length - 1]}` : 'GW ' + sel[0]} · grösste Abweichung zuerst</small></h3><div style="overflow:auto"><table class="evt"><thead><tr><th class="l">Spieler</th><th>Prognose</th><th class="desk">Sleeper</th><th>Echt</th><th>Abweichung</th><th class="desk">${sumMode ? 'Spiele' : 'Min.'}</th></tr></thead><tbody>`
     + list.map(a => { const p = byId[a.id], d = a.actual - a.pred;
-      return `<tr data-pid="${a.id}"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span> ${tag(p)}<div class="sub">${esc(teams[p.teamId]?.short || '')} · ${SLOT_DE[natPos(p)] || ''}</div></td><td>${fmt(a.pred,1)}</td><td class="desk">${a.slN ? fmt(a.sl,1) : '–'}</td><td><b>${fmt(a.actual,1)}</b></td><td class="${devCls(d / Math.max(1, a.games))}">${sgn(d)}</td><td class="desk">${sumMode ? a.games : (a.min || '–')}</td></tr>`; }).join('')
+      return `<tr data-pid="${a.id}"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span>${ghost(p)} ${tag(p)}<div class="sub">${esc(teams[p.teamId]?.short || '')} · ${SLOT_DE[natPos(p)] || ''}</div></td><td>${fmt(a.pred,1)}</td><td class="desk">${a.slN ? fmt(a.sl,1) : '–'}</td><td><b>${fmt(a.actual,1)}</b></td><td class="${devCls(d / Math.max(1, a.games))}">${sgn(d)}</td><td class="desk">${sumMode ? a.games : (a.min || '–')}</td></tr>`; }).join('')
     + `</tbody></table></div>${more ? `<button class="btn-mini" id="evAll">alle ${total} anzeigen</button>` : ''}</div>`;
   // Liga-Teams: aktueller Kader, die 11 mit der höchsten Prognose je Spieltag
   const teamRows = sleeper.rosters.map(ro => {
@@ -3248,7 +3257,7 @@ function openClub(tid, grp = 'ALL'){
     const o = ownerOf(p);
     const own = !Object.keys(sleeper.users).length ? '' : (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
     const inj = p.news ? ` <span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
-    return `<tr data-cpid="${p.id}" class="${p.minutes ? '' : 'cpzero'}"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span>${inj} ${own}</td><td>${scoreHtml(p)}</td><td>${progHtml(p)}</td><td class="mono">${Math.round(p.minL5||0)}</td><td class="mono">${fmt(p.pts90,1)}</td></tr>`;
+    return `<tr data-cpid="${p.id}" class="${p.minutes ? '' : 'cpzero'}"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span>${ghost(p)}${inj} ${own}</td><td>${scoreHtml(p)}</td><td>${progHtml(p)}</td><td class="mono">${Math.round(p.minL5||0)}</td><td class="mono">${fmt(p.pts90,1)}</td></tr>`;
   };
   $('cpBody').innerHTML = `<h3>${esc(teams[tid].name)} · ${g.t} <button class="evbtn" data-evclub="${tid}" title="Auswertung: Prognose vs. echte Punkte">📊 Auswertung</button></h3><div class="cpsub">${played.length} Spieler${rest ? ` · ${rest} ohne Einsatz ausgeblendet` : ''} · antippen = Spielerprofil</div>
     <table><thead><tr><th class="l">Spieler</th><th>Score</th><th>Progn.</th><th title="Ø Minuten letzte 5 Spiele">Min L5</th><th>Pkt/90</th></tr></thead><tbody>${played.map(row).join('') || '<tr><td colspan="5" class="l nodata">Keine Spieler.</td></tr>'}</tbody></table>`;
@@ -3298,7 +3307,7 @@ function playerSheet(p){
   const own = !Object.keys(sleeper.users).length ? '' : (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">mein Team</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
   const [tcls, tlabel] = p.score != null ? tierOf(p.score) : ['', ''];
   const slPos = sp && sp.fantasy_positions ? sp.fantasy_positions.map(x => SLPOS_DE[x] || x).join(' / ') : '';
-  let h = `<div class="pvname">${favBtn(p)}<span class="p-${p.pos}">${esc(p.name)}</span></div>
+  let h = `<div class="pvname">${favBtn(p)}<span class="p-${p.pos}">${esc(p.name)}</span>${ghost(p)}</div>
     <div class="pvsub"><b style="color:var(--text)">${esc(teams[p.teamId].name)}</b>${sp && sp.number ? `<span>#${sp.number}</span>` : ''}<span>${POS_DE[p.pos]}</span>${sp && sp.age ? `<span>${sp.age} J.</span>` : ''}${sp && sp.birth_country ? `<span>${esc(sp.birth_country)}</span>` : ''}${own}</div>`;
   h += `<div class="pvkpi">
     <div><span class="score ${tcls}">${p.score ?? '–'}</span><small>Score · ${tlabel}</small></div>
