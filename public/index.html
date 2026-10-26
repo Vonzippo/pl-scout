@@ -1408,7 +1408,7 @@ async function loadFPL(){
     yellow:num(e.yellow_cards), red:num(e.red_cards), ownGoals:num(e.own_goals),
     starts:num(e.starts), tackles:num(e.tackles), cbi:num(e.clearances_blocks_interceptions), recoveries:num(e.recoveries),
     form:num(e.form), fplPts:num(e.total_points), sel:num(e.selected_by_percent),
-    status:e.status, news:e.news || '', chance:e.chance_of_playing_next_round,
+    status:e.status, news:e.news || '', chance:e.chance_of_playing_next_round, newsAt: e.news_added ? Date.parse(e.news_added) : null,
     penOrder:e.penalties_order, fkOrder:e.direct_freekicks_order, cornerOrder:e.corners_and_indirect_freekicks_order
   }));
 
@@ -2660,6 +2660,7 @@ function backtestGw(k){
   const all = Object.values(tm), games = all.reduce((a,t) => a + t.games, 0) || 1, avg = Math.max(0.9, all.reduce((a,t) => a + t.xg, 0) / games), K = 5;
   for(const t of all){ t.att = (t.xg + avg * K) / (t.games + K); t.def = (t.xgc + avg * K) / (t.games + K); }
   const fxK = allFixtures.filter(f => f.event === k);
+  const kick = Math.min(...fxK.map(f => Date.parse(f.kickoff_time)).filter(isFinite)); // erster Anpfiff der Runde
   const out = {}, clubs = {};
   for(const f of fxK){
     for(const [tid, opp, home] of [[f.team_h, f.team_a, true], [f.team_a, f.team_h, false]]){
@@ -2701,6 +2702,15 @@ function backtestGw(k){
     }
     const r = (real[p.id] || {})[k], st = (histById[p.id] || {})[k];
     const o = { pred: Math.max(0, pred), actual: r ? r.pts : 0, min: r ? r.min : (st ? num(st.minutes) : 0), tid: p.teamId };
+    // Bekannter Ausfall: kein Einsatz UND vorher absehbar (schon im letzten Spiel gefehlt oder Verletzung/Sperre vor dem Anpfiff gemeldet)
+    if(o.min === 0){
+      const last = logs[p.id][logs[p.id].length - 1];
+      const sp = (sleeper.spByFpl || {})[p.id], md = (sp && sp.metadata) || {};
+      const slOut = sp && /^(out|ir|sus|na|doubtful)$/i.test(String(sp.injury_status || '')), injStart = +md.soccer_injury_status_started_at || 0;
+      const fplOut = ['i','s','u','n'].includes(p.status) || (p.status === 'd' && (p.chance ?? 100) <= 25);
+      const reported = (fplOut && p.newsAt && p.newsAt < kick) || (slOut && injStart && injStart < kick);
+      o.known = !!((last && last.min === 0) || reported);
+    }
     out[p.id] = o;
     if(clubs[p.teamId]){ clubs[p.teamId].pred += o.pred; clubs[p.teamId].actual += o.actual; }
   }
@@ -2739,12 +2749,17 @@ function evalData(){
   for(const g of gws){
     const bt = backtestGw(g); if(!bt) continue;
     const snap = evalSnaps[g] && evalSnaps[g].preds ? evalSnaps[g].preds : null, pj = evalProj[g] || {};
-    const rows = [];
+    const rows = [], known = new Map();
     for(const [fid, o] of Object.entries(bt.players)){
+      if(o.known){ known.set(+fid, snap ? (snap[fid] || 0) : o.pred); continue; } // Ausfall war vor dem Spieltag bekannt → zählt nicht zur Abweichung
       const pred = snap ? (snap[fid] || 0) : o.pred;
       rows.push({ id: +fid, pred, back: o.pred, sl: pj[fid], actual: o.actual, min: o.min, tid: o.tid });
     }
-    per[g] = { rows, clubs: bt.clubs, src: snap ? 'gespeichert' : 'Rückrechnung' };
+    // Klub-Summen ohne bekannte Ausfälle
+    const clubs = {};
+    for(const [tid, c] of Object.entries(bt.clubs)) clubs[tid] = { ...c, pred: 0, actual: 0 };
+    for(const r of rows) if(clubs[r.tid]){ clubs[r.tid].pred += r.pred; clubs[r.tid].actual += r.actual; }
+    per[g] = { rows, clubs, known, src: snap ? 'gespeichert' : 'Rückrechnung' };
   }
   return { per, shown: gws.filter(g => per[g]) };
 }
@@ -2781,8 +2796,8 @@ async function openEvalTeam(kind, id){
     + gwRows.slice().reverse().map(x => `<tr><td class="l">GW ${x.g}<div class="sub">${x.src}</div></td>${kind === 'club' ? `<td>${fmt(x.lam,1)}</td><td>${x.goals ?? '–'}</td>` : ''}<td>${fmt(x.pred,1)}</td><td><b>${fmt(x.actual,1)}</b></td><td class="${dc(x.actual - x.pred, 5)}">${sg(x.actual - x.pred)}</td></tr>`).join('') + `</tbody></table>`;
   h += `<div class="evsec"><h3>Spieler <small>grösste Abweichung zuerst · antippen = Profil</small></h3><div style="overflow:auto"><table class="evt"><thead><tr><th class="l">Spieler</th>${sel.length > 1 ? sel.map(g => `<th class="desk">GW ${g}</th>`).join('') : ''}<th>Prognose</th><th>Echt</th><th>Abw.</th></tr></thead><tbody>`
     + list.map(a => { const p = byId[a.id], d = a.actual - a.pred;
-      const cells = sel.length > 1 ? sel.map(g => { const r = a.by[g]; return `<td class="desk">${r ? `<b class="${dc(r.actual - r.pred)}">${fmt(r.actual,0)}</b><div class="sub">${fmt(r.pred,1)}</div>` : '–'}</td>`; }).join('') : '';
-      const mob = sel.length > 1 ? `<div class="sub mob">${sel.map(g => { const r = a.by[g]; return r ? `GW${g} ${fmt(r.pred,0)}→${fmt(r.actual,0)}` : ''; }).filter(Boolean).join(' · ')}</div>` : '';
+      const cells = sel.length > 1 ? sel.map(g => { const r = a.by[g]; return `<td class="desk">${r ? `<b class="${dc(r.actual - r.pred)}">${fmt(r.actual,0)}</b><div class="sub">${fmt(r.pred,1)}</div>` : D.per[g].known.has(a.id) ? '<span class="nodata" title="Ausfall war vorher bekannt – zählt nicht">Ausfall</span>' : '–'}</td>`; }).join('') : '';
+      const mob = sel.length > 1 ? `<div class="sub mob">${sel.map(g => { const r = a.by[g]; return r ? `GW${g} ${fmt(r.pred,0)}→${fmt(r.actual,0)}` : D.per[g].known.has(a.id) ? `GW${g} Ausfall` : ''; }).filter(Boolean).join(' · ')}</div>` : '';
       return `<tr data-cpid="${a.id}" style="cursor:pointer"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span><div class="sub">${esc(teams[p.teamId]?.short || '')} · ${SLOT_DE[natPos(p)] || ''}${!a.games ? ' · kein Einsatz' : ''}</div>${mob}</td>${cells}<td>${fmt(a.pred,1)}</td><td><b>${fmt(a.actual,1)}</b></td><td class="${dc(d / Math.max(1, a.games || 1))}">${sg(d)}</td></tr>`; }).join('')
     + `</tbody></table></div>${sel.length > 1 ? '<div class="nodata desk">Pro Spieltag: oben echte Punkte, darunter die Prognose.</div>' : ''}</div>`;
   $('evPopBody').innerHTML = h;
@@ -2830,8 +2845,8 @@ function renderEval(){
   h += `<div class="evsec"><h3>Treffsicherheit</h3><div style="overflow:auto"><table class="evt"><thead><tr><th class="l">Spieltag</th><th>Ø Abw.<br><small>wir</small></th><th>Ø Abw.<br><small>Sleeper</small></th><th>Tendenz<br><small>echt−Progn.</small></th><th>±3 Pkt<br><small>Treffer</small></th><th class="desk">Spieler</th></tr></thead><tbody>`
     + shown.slice().reverse().map(g => { const st = stats(per[g].rows.filter(inPop)); if(!st.n) return '';
       const better = st.maeO != null && st.maeS != null ? (st.maeO <= st.maeS ? 'evp' : 'evn') : '';
-      return `<tr><td class="l">GW ${g}<div class="sub">${per[g].src}</div></td><td><b>${fmt(st.mae,1)}</b></td><td class="${better}" title="${st.maeO != null ? 'gleiche Spieler, unsere Prognose: ' + fmt(st.maeO,1) : ''}">${st.maeS != null ? fmt(st.maeS,1) : '–'}</td><td class="${devCls(st.bias * 3)}">${sgn(st.bias)}</td><td>${Math.round(st.hit * 100)} %</td><td class="desk">${st.n}</td></tr>`; }).join('')
-    + `</tbody></table></div><div class="nodata">Ø Abweichung = durchschnittlicher Unterschied pro Spieler und Spiel in Punkten (kleiner ist besser). Sleeper grün = unsere Prognose war bei denselben Spielern genauer als Sleepers eigene, rot = Sleeper war genauer. Tendenz positiv = Spieler holten mehr als erwartet.</div></div>`;
+      return `<tr><td class="l">GW ${g}<div class="sub">${per[g].src}${(() => { const n = [...per[g].known].filter(([id, pr]) => pr >= 2 && inPop({ id, min: 0, pred: pr })).length; return n ? ` · ${n} Ausfälle nicht gezählt` : ''; })()}</div></td><td><b>${fmt(st.mae,1)}</b></td><td class="${better}" title="${st.maeO != null ? 'gleiche Spieler, unsere Prognose: ' + fmt(st.maeO,1) : ''}">${st.maeS != null ? fmt(st.maeS,1) : '–'}</td><td class="${devCls(st.bias * 3)}">${sgn(st.bias)}</td><td>${Math.round(st.hit * 100)} %</td><td class="desk">${st.n}</td></tr>`; }).join('')
+    + `</tbody></table></div><div class="nodata">Spieler ohne Einsatz, deren Ausfall vorher bekannt war (Verletzung/Sperre gemeldet oder schon im Spiel davor gefehlt), zählen nicht. Ø Abweichung = durchschnittlicher Unterschied pro Spieler und Spiel in Punkten (kleiner ist besser). Sleeper grün = unsere Prognose war bei denselben Spielern genauer als Sleepers eigene, rot = Sleeper war genauer. Tendenz positiv = Spieler holten mehr als erwartet.</div></div>`;
   // Spieler
   const agg = {};
   for(const g of sel) for(const r of per[g].rows){ if(!inPop(r)) continue; if(!(r.min > 0 || r.pred >= 2) && evalState.who === 'all') continue;
