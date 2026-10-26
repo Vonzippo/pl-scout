@@ -239,6 +239,15 @@ td.muted{color:var(--muted)}
 .pchip .pcm{font-size:10px;font-weight:700;border-radius:4px;padding:0 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pcm.g{color:#37e39b}.pcm.y{color:#ffd166}.pcm.r{color:#ff8f8f}
 .mx.g{color:#37e39b}.mx.y{color:#ffd166}.mx.r{color:#ff8f8f}
+.evbox{max-width:780px}
+.evkpi{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:4px 0 12px}
+.evkpi div{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:6px 4px;text-align:center}
+.evkpi b{display:block;font-size:16px;font-variant-numeric:tabular-nums}.evkpi b.evp{color:#37e39b}.evkpi b.evn{color:#ff8f8f}
+.evkpi small{color:var(--muted);font-size:10px}
+.evt td b.evp{color:#37e39b}.evt td b.evn{color:#ff8f8f}
+.evbtn{background:none;border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:12px;cursor:pointer;margin-left:4px;color:var(--text);vertical-align:1px}
+.mob,td .sub.mob{display:none}
+@media(max-width:640px){.mob,td .sub.mob{display:block;white-space:normal}.evkpi{grid-template-columns:repeat(3,1fr)}.evkpi div:nth-child(n+4){display:none}}
 .evbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;margin-bottom:10px}
 .evseg{display:flex;flex-wrap:wrap;gap:4px}
 .evseg button{font-size:12px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer}
@@ -539,6 +548,7 @@ body.noscroll{overflow:hidden}
   </section>
 </main>
 <div id="clubPop" class="cpop" hidden><div class="cpbox" role="dialog" aria-modal="true"><button class="pvx ghost" data-cpclose title="Schliessen">✕</button><div id="cpBody"></div></div></div>
+<div id="evPop" class="cpop" hidden><div class="cpbox evbox" role="dialog" aria-modal="true"><button class="pvx ghost" data-evclose title="Schliessen">✕</button><div id="evPopBody"></div></div></div>
 <div id="pv" class="pv" hidden><div class="pvbox" role="dialog" aria-modal="true" aria-label="Spielerprofil"><button class="pvx ghost" data-pvclose title="Schliessen">✕</button><div id="pvBody"></div></div></div>
 <footer>Daten: offizielle Fantasy Premier League API (Stats & Spielplan) und Sleeper API (Liga & Kader). Prognose = eigene Punkteregeln × Einsatzminuten × Gegnerstärke – eine Orientierung, keine Garantie.</footer>
 
@@ -1876,7 +1886,7 @@ function renderTeams(){
     .sort((a,b) => (b.r.st.wins||0)-(a.r.st.wins||0) || b.t.fpts-a.t.fpts || b.t.projStart-a.t.projStart);
   const maxProj = Math.max(...list.map(x=>x.t.projStart));
   $('lgBody').innerHTML = list.map((x,i) => `<tr class="click ${x.r.owner===sleeper.me?'me':''}${state.hlOwner===x.r.owner?' hl':''}" data-owner="${esc(x.r.owner)}">
-    <td class="l">${i+1}. ${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''}</td>
+    <td class="l">${i+1}. ${esc(sleeper.users[x.r.owner]||'?')}${x.r.owner===sleeper.me?' (du)':''} <button class="evbtn" data-evteam="${esc(x.r.owner)}" title="Auswertung: Prognose vs. echte Punkte">📊</button></td>
     <td>${x.t.rec}</td><td>${fmt(x.t.fpts,0)}</td>
     <td class="mono ${x.t.projStart===maxProj?'big':''}">${fmt(x.t.projStart,0)}</td>
     <td class="mono">${fmt(x.t.avgScore,0)}</td></tr>`).join('');
@@ -2723,15 +2733,9 @@ async function savePredSnapshot(){
     await fetch('/api/ki/predsnap', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gw, preds }) });
   } catch(e){}
 }
-function renderEval(){
-  const el = $('evalBody'); if(!el || $('viewCoach').hidden) return;
-  const gws = evalGws();
-  if(!gws.length || !sleeper.real){ el.className = 'empty'; el.innerHTML = 'Die Auswertung braucht die echten Sleeper-Punkte – lade oben deine Liga.'; return; }
-  if(gws.some(g => !evalProj[g] || !evalSnaps[g])){ if(!evalLoading) loadEvalExtras(gws).then(renderEval); }
-  el.className = '';
-  const owned = id => ownerOf({ id }), mineSet = new Set(players.filter(p => ownerOf(p) === sleeper.me).map(p => p.id));
-  // Pro Spieltag: Prognose (gespeichert oder rückgerechnet), Sleeper-Prognose, echte Punkte
-  const per = {};
+// Pro Spieltag: Prognose (gespeichert oder rückgerechnet), Sleeper-Prognose, echte Punkte
+function evalData(){
+  const gws = evalGws(), per = {};
   for(const g of gws){
     const bt = backtestGw(g); if(!bt) continue;
     const snap = evalSnaps[g] && evalSnaps[g].preds ? evalSnaps[g].preds : null, pj = evalProj[g] || {};
@@ -2742,7 +2746,69 @@ function renderEval(){
     }
     per[g] = { rows, clubs: bt.clubs, src: snap ? 'gespeichert' : 'Rückrechnung' };
   }
-  const shown = gws.filter(g => per[g]);
+  return { per, shown: gws.filter(g => per[g]) };
+}
+// Auswertung für ein einzelnes Team (Liga-Team = heutiger Kader, PL-Klub = alle Spieler) im Fenster
+function evalTeamIds(kind, id){
+  if(kind === 'club') return new Set(players.filter(p => p.teamId === +id).map(p => p.id));
+  const ro = sleeper.rosters.find(r => r.owner === id); if(!ro) return new Set();
+  return new Set(ro.players.map(sid => sleeper.fplBySleeper[sid] ?? sleeper.matchPid(sid)).filter(x => x != null));
+}
+async function openEvalTeam(kind, id){
+  const D0 = evalData(); if(!D0.shown.length || !sleeper.real){ setStatus('Für die Auswertung braucht es die echten Sleeper-Punkte – lade zuerst die Liga.', true); return; }
+  if(D0.shown.some(g => !evalProj[g] || !evalSnaps[g])) await loadEvalExtras(D0.shown);
+  const D = evalData();
+  const sel = evalState.gw === 'sum' ? D.shown : [+evalState.gw].filter(g => D.per[g]);
+  if(!sel.length) return;
+  const ids = evalTeamIds(kind, id), byId = Object.fromEntries(players.map(p => [p.id, p]));
+  const name = kind === 'club' ? (teams[id]?.name || 'Klub') : (sleeper.users[id] || 'Team');
+  const gwRows = sel.map(g => {
+    const rows = D.per[g].rows.filter(r => ids.has(r.id));
+    const use = kind === 'club' ? rows : rows.slice().sort((a,b) => b.pred - a.pred).slice(0, 11);
+    const c = kind === 'club' ? D.per[g].clubs[id] : null;
+    return { g, pred: use.reduce((t,r) => t + r.pred, 0), actual: use.reduce((t,r) => t + r.actual, 0), lam: c ? c.lam : null, goals: c ? c.goals : null, src: D.per[g].src };
+  });
+  const P = {};
+  for(const g of sel) for(const r of D.per[g].rows){ if(!ids.has(r.id)) continue; const a = (P[r.id] ||= { id: r.id, pred: 0, actual: 0, games: 0, by: {} }); a.pred += r.pred; a.actual += r.actual; if(r.min > 0) a.games++; a.by[g] = r; }
+  const list = Object.values(P).filter(a => byId[a.id] && (kind !== 'club' || a.games > 0 || a.pred >= 1)).sort((a,b) => Math.abs(b.actual - b.pred) - Math.abs(a.actual - a.pred));
+  const tp = gwRows.reduce((t,x) => t + x.pred, 0), ta = gwRows.reduce((t,x) => t + x.actual, 0);
+  const R = list.flatMap(a => sel.map(g => a.by[g]).filter(r => r && (r.min > 0 || r.pred >= 2)));
+  const mae = R.length ? R.reduce((t,r) => t + Math.abs(r.actual - r.pred), 0) / R.length : null, hit = R.length ? R.filter(r => Math.abs(r.actual - r.pred) <= 3).length / R.length : null;
+  const dc = (d, sc = 1) => d / sc >= 3 ? 'evp' : d / sc <= -3 ? 'evn' : '', sg = d => (d > 0 ? '+' : '') + fmt(d, 1);
+  let h = `<h3>📊 ${esc(name)}</h3><div class="cpsub">${kind === 'club' ? 'Premier-League-Klub · alle Spieler' : 'Liga-Team · heutiger Kader (Teamsumme = die 11 mit der höchsten Prognose)'} · ${sel.length > 1 ? `GW ${sel[0]}–${sel[sel.length - 1]}` : 'GW ' + sel[0]}</div>`;
+  h += `<div class="evkpi"><div><b>${fmt(tp,1)}</b><small>Prognose</small></div><div><b>${fmt(ta,1)}</b><small>echt</small></div><div><b class="${dc(ta - tp, 5 * sel.length)}">${sg(ta - tp)}</b><small>Abweichung</small></div><div><b>${mae != null ? fmt(mae,1) : '–'}</b><small>Ø Abw. pro Spieler</small></div><div><b>${hit != null ? Math.round(hit * 100) + ' %' : '–'}</b><small>±3 Pkt getroffen</small></div></div>`;
+  h += `<table class="evt"><thead><tr><th class="l">Spieltag</th>${kind === 'club' ? '<th>Tore erw.</th><th>Tore echt</th>' : ''}<th>Prognose</th><th>Echt</th><th>Abweichung</th></tr></thead><tbody>`
+    + gwRows.slice().reverse().map(x => `<tr><td class="l">GW ${x.g}<div class="sub">${x.src}</div></td>${kind === 'club' ? `<td>${fmt(x.lam,1)}</td><td>${x.goals ?? '–'}</td>` : ''}<td>${fmt(x.pred,1)}</td><td><b>${fmt(x.actual,1)}</b></td><td class="${dc(x.actual - x.pred, 5)}">${sg(x.actual - x.pred)}</td></tr>`).join('') + `</tbody></table>`;
+  h += `<div class="evsec"><h3>Spieler <small>grösste Abweichung zuerst · antippen = Profil</small></h3><div style="overflow:auto"><table class="evt"><thead><tr><th class="l">Spieler</th>${sel.length > 1 ? sel.map(g => `<th class="desk">GW ${g}</th>`).join('') : ''}<th>Prognose</th><th>Echt</th><th>Abw.</th></tr></thead><tbody>`
+    + list.map(a => { const p = byId[a.id], d = a.actual - a.pred;
+      const cells = sel.length > 1 ? sel.map(g => { const r = a.by[g]; return `<td class="desk">${r ? `<b class="${dc(r.actual - r.pred)}">${fmt(r.actual,0)}</b><div class="sub">${fmt(r.pred,1)}</div>` : '–'}</td>`; }).join('') : '';
+      const mob = sel.length > 1 ? `<div class="sub mob">${sel.map(g => { const r = a.by[g]; return r ? `GW${g} ${fmt(r.pred,0)}→${fmt(r.actual,0)}` : ''; }).filter(Boolean).join(' · ')}</div>` : '';
+      return `<tr data-cpid="${a.id}" style="cursor:pointer"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span><div class="sub">${esc(teams[p.teamId]?.short || '')} · ${SLOT_DE[natPos(p)] || ''}${!a.games ? ' · kein Einsatz' : ''}</div>${mob}</td>${cells}<td>${fmt(a.pred,1)}</td><td><b>${fmt(a.actual,1)}</b></td><td class="${dc(d / Math.max(1, a.games || 1))}">${sg(d)}</td></tr>`; }).join('')
+    + `</tbody></table></div>${sel.length > 1 ? '<div class="nodata desk">Pro Spieltag: oben echte Punkte, darunter die Prognose.</div>' : ''}</div>`;
+  $('evPopBody').innerHTML = h;
+  closeClub();
+  $('evPop').hidden = false; $('evPop').scrollTop = 0; document.body.classList.add('noscroll');
+}
+function closeEvalTeam(){ if($('evPop').hidden) return; $('evPop').hidden = true; if($('pv').hidden) document.body.classList.remove('noscroll'); }
+$('evPop').addEventListener('click', e => {
+  if(e.target === $('evPop') || e.target.closest('[data-evclose]')) return closeEvalTeam();
+  const r = e.target.closest('tr[data-cpid]'); if(r) openPlayer(+r.dataset.cpid);
+});
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && $('pv').hidden) closeEvalTeam(); });
+// 📊-Knöpfe (Liga-Übersicht, Klub-Fenster) öffnen die Team-Auswertung
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-evteam],button[data-evclub]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  openEvalTeam(b.dataset.evteam ? 'team' : 'club', b.dataset.evteam || +b.dataset.evclub);
+}, true);
+function renderEval(){
+  const el = $('evalBody'); if(!el || $('viewCoach').hidden) return;
+  const gws = evalGws();
+  if(!gws.length || !sleeper.real){ el.className = 'empty'; el.innerHTML = 'Die Auswertung braucht die echten Sleeper-Punkte – lade oben deine Liga.'; return; }
+  if(gws.some(g => !evalProj[g] || !evalSnaps[g])){ if(!evalLoading) loadEvalExtras(gws).then(renderEval); }
+  el.className = '';
+  const owned = id => ownerOf({ id }), mineSet = new Set(players.filter(p => ownerOf(p) === sleeper.me).map(p => p.id));
+  const { per, shown } = evalData();
   if(!shown.length){ el.className = 'empty'; el.innerHTML = 'Noch zu wenige Spieltage für eine Auswertung.'; return; }
   const inPop = r => evalState.who === 'mine' ? mineSet.has(r.id) : evalState.who === 'liga' ? !!owned(r.id) : (r.min > 0 || r.pred >= 2);
   const stats = rows => {
@@ -2787,22 +2853,24 @@ function renderEval(){
       const top = rows.sort((a,b) => b.pred - a.pred).slice(0, 11); pred += top.reduce((t,r) => t + r.pred, 0); actual += top.reduce((t,r) => t + r.actual, 0); }
     return { owner: ro.owner, pred, actual };
   }).sort((a,b) => (b.actual - b.pred) - (a.actual - a.pred));
-  h += `<div class="evsec"><h3>Liga-Teams <small>aktueller Kader · die 11 mit der höchsten Prognose</small></h3><table class="evt"><thead><tr><th class="l">Team</th><th>Prognose</th><th>Echt</th><th>Abweichung</th></tr></thead><tbody>`
-    + teamRows.map(t => { const d = t.actual - t.pred; return `<tr class="${t.owner === sleeper.me ? 'evme' : ''}"><td class="l">${esc(sleeper.users[t.owner] || 'Team')}</td><td>${fmt(t.pred,1)}</td><td><b>${fmt(t.actual,1)}</b></td><td class="${devCls(d / (5 * sel.length))}">${sgn(d)}</td></tr>`; }).join('')
+  h += `<div class="evsec"><h3>Liga-Teams <small>aktueller Kader · die 11 mit der höchsten Prognose · antippen = Auswertung pro Team</small></h3><table class="evt"><thead><tr><th class="l">Team</th><th>Prognose</th><th>Echt</th><th>Abweichung</th></tr></thead><tbody>`
+    + teamRows.map(t => { const d = t.actual - t.pred; return `<tr class="${t.owner === sleeper.me ? 'evme' : ''}" data-evrow-team="${esc(t.owner)}" style="cursor:pointer"><td class="l">${esc(sleeper.users[t.owner] || 'Team')} <span class="nodata">›</span></td><td>${fmt(t.pred,1)}</td><td><b>${fmt(t.actual,1)}</b></td><td class="${devCls(d / (5 * sel.length))}">${sgn(d)}</td></tr>`; }).join('')
     + `</tbody></table><div class="nodata">Sleeper gibt die Wochen-Aufstellungen dieser Liga nicht heraus – deshalb zählt hier der heutige Kader mit den 11 Spielern, die wir am höchsten prognostiziert hatten.</div></div>`;
   // Premier-League-Klubs: erwartete vs. echte Tore und Fantasy-Punkte aller Spieler des Klubs
   const cl = {};
   for(const g of sel) for(const c of Object.values(per[g].clubs)){ const a = (cl[c.tid] ||= { tid: c.tid, lam: 0, goals: 0, pred: 0, actual: 0 }); a.lam += c.lam; a.goals += c.goals; a.pred += c.pred; a.actual += c.actual; }
   const clubs = Object.values(cl).sort((a,b) => (b.actual - b.pred) - (a.actual - a.pred));
-  h += `<div class="evsec"><h3>Premier-League-Klubs <small>Tore und Fantasy-Punkte aller Spieler</small></h3><div style="overflow:auto"><table class="evt"><thead><tr><th class="l">Klub</th><th>Tore erw.</th><th>Tore echt</th><th>Pkt Prognose</th><th>Pkt echt</th><th>Abweichung</th></tr></thead><tbody>`
+  h += `<div class="evsec"><h3>Premier-League-Klubs <small>Tore und Fantasy-Punkte aller Spieler · antippen = Auswertung pro Klub</small></h3><div style="overflow:auto"><table class="evt"><thead><tr><th class="l">Klub</th><th>Tore erw.</th><th>Tore echt</th><th>Pkt Prognose</th><th>Pkt echt</th><th>Abweichung</th></tr></thead><tbody>`
     + clubs.map(c => { const d = c.actual - c.pred, dg = c.goals - c.lam;
-      return `<tr><td class="l">${esc(teams[c.tid]?.name || '')}</td><td>${fmt(c.lam,1)}</td><td class="${devCls(dg * 2)}">${c.goals}</td><td>${fmt(c.pred,1)}</td><td><b>${fmt(c.actual,1)}</b></td><td class="${devCls(d / (4 * sel.length))}">${sgn(d)}</td></tr>`; }).join('')
+      return `<tr data-evrow-club="${c.tid}" style="cursor:pointer"><td class="l">${esc(teams[c.tid]?.name || '')} <span class="nodata">›</span></td><td>${fmt(c.lam,1)}</td><td class="${devCls(dg * 2)}">${c.goals}</td><td>${fmt(c.pred,1)}</td><td><b>${fmt(c.actual,1)}</b></td><td class="${devCls(d / (4 * sel.length))}">${sgn(d)}</td></tr>`; }).join('')
     + `</tbody></table></div></div>`;
   h += `<div class="nodata" style="margin-top:8px">«Rückrechnung» = unser Modell mit dem Wissensstand vor dem Spieltag (ohne damalige News und Quoten). Ab GW ${nextGw} speichert die Seite die echte Prognose kurz vor dem Anpfiff («gespeichert»).</div>`;
   el.innerHTML = h;
   el.querySelectorAll('[data-evgw]').forEach(b => b.onclick = () => { evalState.gw = b.dataset.evgw; evalState.all = false; renderEval(); });
   el.querySelectorAll('[data-evwho]').forEach(b => b.onclick = () => { evalState.who = b.dataset.evwho; store.set('evWho', evalState.who); evalState.all = false; renderEval(); });
   const ab = $('evAll'); if(ab) ab.onclick = () => { evalState.all = true; renderEval(); };
+  el.querySelectorAll('[data-evrow-team]').forEach(tr => tr.onclick = () => openEvalTeam('team', tr.dataset.evrowTeam));
+  el.querySelectorAll('[data-evrow-club]').forEach(tr => tr.onclick = () => openEvalTeam('club', +tr.dataset.evrowClub));
 }
 
 /* ---------- Klub-Fenster (Teams → PL-Tabelle) ---------- */
@@ -2819,7 +2887,7 @@ function openClub(tid, grp = 'ALL'){
     const inj = p.news ? ` <span class="news ${p.status==='a'||p.status==='d'?'':'bad'}" title="${esc(p.news)}">⚠</span>` : '';
     return `<tr data-cpid="${p.id}" class="${p.minutes ? '' : 'cpzero'}"><td class="l"><span class="pname p-${p.pos}">${esc(p.name)}</span>${inj} ${own}</td><td>${scoreHtml(p)}</td><td>${progHtml(p)}</td><td class="mono">${Math.round(p.minL5||0)}</td><td class="mono">${fmt(p.pts90,1)}</td></tr>`;
   };
-  $('cpBody').innerHTML = `<h3>${esc(teams[tid].name)} · ${g.t}</h3><div class="cpsub">${played.length} Spieler${rest ? ` · ${rest} ohne Einsatz ausgeblendet` : ''} · antippen = Spielerprofil</div>
+  $('cpBody').innerHTML = `<h3>${esc(teams[tid].name)} · ${g.t} <button class="evbtn" data-evclub="${tid}" title="Auswertung: Prognose vs. echte Punkte">📊 Auswertung</button></h3><div class="cpsub">${played.length} Spieler${rest ? ` · ${rest} ohne Einsatz ausgeblendet` : ''} · antippen = Spielerprofil</div>
     <table><thead><tr><th class="l">Spieler</th><th>Score</th><th>Progn.</th><th title="Ø Minuten letzte 5 Spiele">Min L5</th><th>Pkt/90</th></tr></thead><tbody>${played.map(row).join('') || '<tr><td colspan="5" class="l nodata">Keine Spieler.</td></tr>'}</tbody></table>`;
   $('clubPop').hidden = false; $('clubPop').scrollTop = 0; document.body.classList.add('noscroll');
 }
@@ -3092,7 +3160,7 @@ $('cmpPill').addEventListener('click', () => $('cmpCard').scrollIntoView({ behav
 // Zeile antippen/anklicken markiert sie sofort (Spieler werden in allen Tabellen mitmarkiert); Doppeltipp öffnet das Profil
 let lastTap = {};
 document.addEventListener('click', e => {
-  if(e.target.closest('input,button,a,select,summary,label,#pv,#clubPop')) return;
+  if(e.target.closest('input,button,a,select,summary,label,#pv,#clubPop,#evPop')) return;
   const tr = e.target.closest('tbody tr'); if(!tr || tr.querySelector('th')) return;
   const pid = tr.dataset.pid, owner = tr.dataset.owner;
   if(owner != null){
