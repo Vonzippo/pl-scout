@@ -264,6 +264,14 @@ td.muted{color:var(--muted)}
 .evt tr.evme td{background:rgba(55,227,155,.08)}
 .evtag{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:3px}
 .evtag.mine{color:#37e39b;border-color:rgba(55,227,155,.5)}.evtag.free{color:#5aa9ff;border-color:rgba(90,169,255,.5)}
+.eub{display:inline-block;font-size:9px;font-weight:800;line-height:14px;padding:0 4px;border-radius:4px;margin-left:4px;background:#1e3a8a;color:#cfe0ff;vertical-align:1px;white-space:nowrap;cursor:help}
+.eub.r-hoch{background:#7c2d12;color:#ffd7c2}.eub.r-mittel{background:#5b4513;color:#ffe2a8}
+.pchip{position:relative}.pceu{position:absolute;top:2px;right:3px}.pceu .eub{margin:0}
+.tablemode{margin:0 0 8px}
+.gwc{text-align:center!important}
+.gwv{display:inline-block;min-width:24px;padding:1px 4px;border-radius:5px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center}
+.gwv.g3{background:rgba(55,227,155,.28);color:#37e39b}.gwv.g2{background:rgba(55,227,155,.13);color:#9ff0c9}.gwv.g1{color:var(--text)}.gwv.g0{color:var(--muted)}
+.gwz{color:var(--muted);font-size:11px}
 .mtbest{font-size:12px;padding:6px 8px;background:var(--panel2);border-radius:8px;margin-bottom:6px;display:flex;flex-direction:column;gap:2px}
 .mt-pos{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .pu{font-size:11px;padding:2px 6px;border-radius:6px;border:1px solid var(--line);white-space:nowrap}
@@ -501,6 +509,7 @@ body.noscroll{overflow:hidden}
   <div class="kibar"><span id="kiStatus">🤖 KI-Bot: lädt …</span><button class="ghost" id="kiRun" title="Bewertet die fälligen Spieler sofort (sonst automatisch alle 10 Minuten)">Jetzt bewerten</button></div>
   <div class="legend">Score (Spielerqualität): <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine · Namensfarbe = Position: <b class="p-GKP">TW</b> <b class="p-DEF">VER</b> <b class="p-MID">MIT</b> <b class="p-FWD">STU</b></div>
   </details>
+  <div class="evseg tablemode" id="tableMode"><button data-tm="std">Übersicht</button><button data-tm="gw">📈 Punkte pro Spieltag</button></div>
   <div class="tablewrap">
     <table>
       <thead><tr id="thead"></tr></thead>
@@ -583,7 +592,7 @@ let playedGwByTeam = {}, finishedGws = [], histById = null, allFixtures = [];
 let sleeper = { ownerByFpl: {}, fplBySleeper: {}, users: {}, me: '', rosters: [], sp: {} };
 const SPOS = {GK:'GKP',G:'GKP',D:'DEF',M:'MID',F:'FWD'};
 let view = 'players', teamA = '', teamB = '';
-const state = { hlPid:null, hlOwner:null, q:'', pos:'', team:'', avail:'', minMin:270, horizon:4, fitOnly:false, sort:'score', dir:-1, selected:new Set() };
+const state = { hlPid:null, hlOwner:null, q:'', pos:'', team:'', avail:'', minMin:270, horizon:4, fitOnly:false, sort:'score', dir:-1, selected:new Set(), tm: 'std' };
 
 const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
@@ -1345,7 +1354,7 @@ async function refreshAll(){
   try {
     await loadFPL();
     // Matchups (Wettquoten + KI-Spielvorschau) früh laden, damit sie in Prognose und Aufstellung einfliessen
-    const extras = Promise.all([loadOdds(), loadMatchAi(nextGw)]);
+    const extras = Promise.all([loadOdds(), loadMatchAi(nextGw), loadEuro()]);
     const extrasLate = await Promise.race([extras.then(() => false), new Promise(r => setTimeout(() => r(true), 4000))]);
     if(extrasLate) extras.then(() => renderAll());
     await loadHistory();
@@ -1615,7 +1624,31 @@ let colCfg = loadColCfg();
 let lastSize = screenSize();
 window.addEventListener('resize', () => { if(screenSize() !== lastSize){ lastSize = screenSize(); colCfg = loadColCfg(); renderHead(); renderTable(); if(!$('colPanel').hidden) renderColPanel(); } });
 function activeCols(){
+  if(state.tm === 'gw') return gwCols();
   return colCfg.order.filter(k => !colCfg.hidden.includes(k)).map(k => COLDEFS.find(c => c.k === k));
+}
+// Ansicht «Punkte pro Spieltag»: echte Punkte (Liga-Wertung) der letzten Spieltage, sortierbar
+const gwWeeks = () => (sleeper.realWeeks || []).filter(w => w < nextGw || (allFixtures || []).some(f => f.event === w && f.started)).slice(-(isMobile() ? 5 : 8));
+const gwReal = (p, w) => ((sleeper.real || {})[p.id] || {})[w] || null;
+const gwHasGame = (p, w) => (allFixtures || []).some(f => f.event === w && (f.team_h === p.teamId || f.team_a === p.teamId));
+const gwSum = (p, ws) => ws.reduce((t, w) => t + ((gwReal(p, w) || {}).pts || 0), 0);
+const gwAvg = (p, ws) => { const a = ws.map(w => gwReal(p, w)).filter(r => r && r.min > 0); return a.length ? a.reduce((t, r) => t + r.pts, 0) / a.length : null; };
+function gwCell(p, w){
+  if(!gwHasGame(p, w)) return '<span class="nodata" title="spielfrei">–</span>';
+  const fx = allFixtures.filter(f => f.event === w && (f.team_h === p.teamId || f.team_a === p.teamId));
+  const opp = fx.map(f => (f.team_h === p.teamId ? 'vs ' : '@ ') + (teams[f.team_h === p.teamId ? f.team_a : f.team_h]?.short || '?') + (f.team_h_score != null ? ` ${f.team_h_score}:${f.team_a_score}` : '')).join(', ');
+  const r = gwReal(p, w);
+  if(!r || !r.min) return `<span class="gwz" title="${esc(`GW ${w} ${opp}: kein Einsatz`)}">0'</span>`;
+  const bt = backtestGw(w), pr = bt && bt.players[p.id];
+  const v = r.pts, cls = v >= 12 ? 'g3' : v >= 8 ? 'g2' : v >= 4 ? 'g1' : 'g0';
+  return `<span class="gwv ${cls}" title="${esc(`GW ${w} ${opp}: ${fmt(v,1)} Pkt · ${r.min} Min.${r.gs ? ' (Startelf)' : ''}${pr ? ' · Prognose ' + fmt(pr.pred,1) : ''}`)}">${fmt(v,0)}</span>`;
+}
+function gwCols(){
+  const ws = gwWeeks();
+  return [COLDEFS[0], ...ws.map(w => ({ k: 'gw_' + w, t: 'GW ' + w, cls: 'gwc', cell: p => gwCell(p, w) })),
+    { k: 'gsum', t: 'Σ', cls: 'mono', cell: p => `<b>${fmt(gwSum(p, ws), 0)}</b>` },
+    { k: 'gavg', t: 'Ø/Spiel', cls: 'mono', cell: p => { const a = gwAvg(p, ws); return a != null ? fmt(a, 1) : '–'; } },
+    ...(isMobile() ? [] : [COLDEFS.find(c => c.k === 'prog')])];
 }
 const COLS = COLDEFS; // für Sortier-Logik
 function nameCell(p){
@@ -1624,7 +1657,7 @@ function nameCell(p){
   const o = Object.keys(sleeper.users).length ? ownerOf(p) : undefined;
   const own = o === undefined && !Object.keys(sleeper.users).length ? '' :
     (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
-  return `<div class="nm">${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}</div>
+  return `<div class="nm">${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}${euroBadge(p)}</div>
     <div class="sub"><b>${esc(teams[p.teamId].short)}</b>${own}<span class="fdr sm">${opp}</span></div>`;
 }
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
@@ -1646,6 +1679,9 @@ function sortVal(p,k){
   if(k==='prog') return p.prog ?? -99;
   if(k==='past1') return p.pastScore ?? -1;
   if(k==='vorp') return p.vorp ?? -99;
+  if(k.startsWith('gw_')){ const r = gwReal(p, +k.slice(3)); return r ? r.pts : (gwHasGame(p, +k.slice(3)) ? -0.5 : -1); }
+  if(k==='gsum') return gwSum(p, gwWeeks());
+  if(k==='gavg') return gwAvg(p, gwWeeks()) ?? -1;
   return p[k];
 }
 function filtered(){
@@ -2355,7 +2391,7 @@ function renderLineup(){
   xiRows.sort((a,b) => r.startSlots.indexOf(a.slot) - r.startSlots.indexOf(b.slot));
   const inXI = new Set(xiRows.filter(x => x.p).map(x => x.p.id));
   const tot = r.cur.total + r.lockedTotal, own = r.ownOnly.total + r.lockedTotal;
-  const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>`;
+  const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>${euroBadge(p)}`;
   const fxLine = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')} · ${koStr(koTime(f))}`; };
   const MU = gwMatchUnits(gw);
   const muOf = p => { const f = r.fxOf(p); return f ? MU.unitOf(f, p.teamId) : null; };
@@ -2379,7 +2415,7 @@ function renderLineup(){
     <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
   // Spielfeld: klare Formation (Sturm oben, Torwart unten)
   const fxShort = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')}`; };
-  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span>${(() => { const u = muOf(x.p); if(!u) return ''; const k = isBack(x.p) ? 'cs' : 'att'; return `<span class="pcm ${MU.lvl(u['r_' + k])}">${k === 'cs' ? 'Zu-Null ' + pct(u.cs) + '%' : '⚽ ' + fmt(u.att,1) + ' Tore'}</span>`; })()}</div>`;
+  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span>${(() => { const b = euroBadge(x.p); return b ? `<span class="pceu">${b}</span>` : ''; })()}${(() => { const u = muOf(x.p); if(!u) return ''; const k = isBack(x.p) ? 'cs' : 'att'; return `<span class="pcm ${MU.lvl(u['r_' + k])}">${k === 'cs' ? 'Zu-Null ' + pct(u.cs) + '%' : '⚽ ' + fmt(u.att,1) + ' Tore'}</span>`; })()}</div>`;
   const LINE_DE = { F:'Sturm', M:'Mittelfeld', D:'Abwehr', GK:'Tor' };
   h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">Prognose GW ${gw}: ${fmt(tot,1)}</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
     <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
@@ -2412,6 +2448,10 @@ function renderLineup(){
     return `<tr data-pid="${p.id}"><td class="l">${pl(p)}<div class="sub">${esc(teams[p.teamId]?.short || '')} · ${esc(outWhy(p))}${ret && Date.parse(ret) > Date.now() ? ' · zurück ca. ' + fmtDay(ret) : ''}</div></td><td class="nodata">–</td></tr>`; }).join('')}</tbody></table></div>`;
   // Hinweise
   const tips = [];
+  // Europapokal/Ligapokal: Rotationsgefahr bei Startelf-Spielern
+  for(const x of xiRows){ if(!x.p || x.locked) continue; const eu = euroInfo(x.p); if(!eu || !eu.risk) continue;
+    const e = eu.before || eu.after;
+    tips.push(`🔄 <b>${esc(x.p.name)}</b> – Rotation ${eu.risk === 'hoch' ? 'wahrscheinlich' : 'möglich'}: ${esc(teams[x.p.teamId]?.short || '')} spielt${eu.before ? `e ${esc(e.label)} ${euroWhen(e.ko)} (${esc(euroAppTxt(eu.before, eu.app) || 'Aufstellung folgt')})` : ` ${esc(e.label)} ${euroWhen(e.ko)}`}. Aufstellung vor dem Anpfiff prüfen.`); }
   // Spielvorschau der KI: erwähnt sie einen Startelf-Spieler mit Ausfall/Rotation, als Hinweis zeigen
   const aiBy = matchAi && matchAi.gw === gw ? Object.fromEntries((matchAi.items || []).map(x => [x.id, x])) : {};
   const NEG = /(fraglich|fällt|fehlt|fehlen|verletz|gesperrt|sperre|angeschlagen|ausfall|rotation|rotier|geschont|bank|nicht im kader|unsicher|offen)/i;
@@ -2888,6 +2928,73 @@ function renderEval(){
   el.querySelectorAll('[data-evrow-club]').forEach(tr => tr.onclick = () => openEvalTeam('club', +tr.dataset.evrowClub));
 }
 
+/* ---------- Europapokal & Ligapokal: wer hat unter der Woche gespielt, wo droht Rotation? ---------- */
+let euroData = null, euroByTeam = {}, euroApps = {};
+async function loadEuro(){
+  try { euroData = await getJSON('/api/euro'); } catch(e){ euroData = { events: [] }; }
+  buildEuro();
+}
+function buildEuro(){
+  euroByTeam = {}; euroApps = {};
+  if(!euroData || !players.length || !Object.keys(teams).length) return;
+  const byKey = {}; for(const id in teams) byKey[teamKey(teams[id].name)] = +id;
+  for(const e of euroData.events || []){
+    for(const k of [e.hk, e.ak]){
+      const tid = byKey[k]; if(!tid) continue;
+      (euroByTeam[tid] ||= []).push(e);
+      if(e.players){
+        const squad = players.filter(p => p.teamId === tid);
+        for(const x of e.players.filter(x => x.k === k)){ const pid = matchEuroName(x.n, squad); if(pid) (euroApps[pid] ||= {})[e.id] = x; }
+      }
+    }
+  }
+  for(const tid in euroByTeam) euroByTeam[tid].sort((a,b) => a.ko - b.ko);
+}
+function matchEuroName(n, squad){
+  const t = norm(n).split(' ').filter(Boolean); if(!t.length) return null;
+  const last = t[t.length - 1], full = t.join(' ');
+  let best = null, bs = 0, second = 0;
+  for(const p of squad){
+    const ft = new Set([...norm(p.full).split(' '), ...norm(p.name).split(' ')].filter(Boolean));
+    let sc = (norm(p.full) === full ? 6 : 0) + (norm(p.name) === full ? 4 : 0) + (ft.has(last) ? 3 : 0) + t.filter(x => x.length > 1 && ft.has(x)).length;
+    if(sc > bs){ second = bs; bs = sc; best = p; } else if(sc > second) second = sc;
+  }
+  return best && bs >= 3 && bs > second ? best.id : null;
+}
+const euroWhen = t => new Date(t).toLocaleString('de-CH', { weekday:'short', day:'numeric', month:'numeric', hour:'2-digit', minute:'2-digit' }).replace(/,/g, '');
+// Bezug: das nächste Premier-League-Spiel des Spielers
+function euroInfo(p){
+  const evs = euroByTeam[p.teamId]; if(!evs || !evs.length) return null;
+  const f = gwFixture(p, nextGw), plKo = f ? koTime(f) : Date.now();
+  const before = evs.filter(e => e.ko < plKo && e.ko > plKo - 9 * 864e5).slice(-1)[0] || null;
+  const after = evs.find(e => e.ko > plKo && e.ko < plKo + 5 * 864e5) || null;
+  const gapB = before ? (plKo - before.ko) / 864e5 : null, gapA = after ? (after.ko - plKo) / 864e5 : null;
+  const app = before ? (euroApps[p.id] || {})[before.id] || null : null;
+  let risk = '';
+  if(gapB != null && gapB <= 3.6) risk = app && app.s ? 'hoch' : 'mittel';      // kurz vorher gespielt (Do → So, Mi → Sa)
+  if(!risk && gapA != null && gapA <= 3.6) risk = 'mittel';                       // wichtiges Spiel kurz danach
+  if(risk === 'mittel' && before && before.players && app && !app.a) risk = '';    // in Europa geschont → eher frisch
+  return { before, after, gapB, gapA, app, risk };
+}
+function euroAppTxt(e, app){
+  if(!e || e.state !== 'post') return e && e.state === 'in' ? 'läuft' : '';
+  if(!e.players) return 'Aufstellung unbekannt';
+  if(!app) return 'nicht im Aufgebot';
+  return app.s ? (app.o ? 'Startelf, ausgewechselt' : 'Startelf, durchgespielt') : app.i ? 'eingewechselt' : 'auf der Bank, nicht eingesetzt';
+}
+function euroLines(p, x){
+  const L = [];
+  if(x.before) L.push(`${x.before.label} ${euroWhen(x.before.ko)}: ${x.before.home} – ${x.before.away}${x.before.hs != null ? ` ${x.before.hs}:${x.before.as}` : ''} · ${euroAppTxt(x.before, x.app) || 'noch nicht gespielt'} · ${fmt(x.gapB,1)} Tage vor dem PL-Spiel`);
+  if(x.after) L.push(`${x.after.label} ${euroWhen(x.after.ko)}: ${x.after.home} – ${x.after.away} · ${fmt(x.gapA,1)} Tage nach dem PL-Spiel`);
+  if(x.risk) L.push(x.risk === 'hoch' ? '🔄 Hohe Rotationsgefahr im nächsten PL-Spiel' : '🔄 Rotation im nächsten PL-Spiel möglich');
+  return L;
+}
+function euroBadge(p){
+  const x = euroInfo(p); if(!x || (!x.before && !x.after)) return '';
+  const e = x.before || x.after;
+  return `<span class="eub${x.risk ? ' r-' + x.risk : ''}" title="${esc(euroLines(p, x).join('\n'))}">${esc(e.comp)}${x.risk ? '🔄' : ''}</span>`;
+}
+
 /* ---------- Klub-Fenster (Teams → PL-Tabelle) ---------- */
 const GRP = { FWD:{ pos:['FWD'], t:'Sturm' }, MID:{ pos:['MID'], t:'Mittelfeld' }, DEF:{ pos:['DEF','GKP'], t:'Abwehr & Tor' }, ALL:{ pos:['GKP','DEF','MID','FWD'], t:'ganzer Kader' } };
 function openClub(tid, grp = 'ALL'){
@@ -2986,6 +3093,15 @@ function playerSheet(p){
   h += `<div><span>Premier-League-Status</span>${({ a:'verfügbar', d:'fraglich', i:'verletzt', s:'gesperrt', u:'nicht verfügbar', n:'nicht verfügbar' })[p.status] || p.status}${p.chance != null ? ` · ${p.chance}% Einsatzchance` : ''}</div>`;
   if(p.news) h += `<div style="grid-column:1/-1"><span>PL-Meldung</span>${esc(p.news)}</div>`;
   h += `</div></div>`;
+
+  // Europapokal & Ligapokal: Einsätze unter der Woche und Rotationsgefahr
+  const evs = (euroByTeam[p.teamId] || []).filter(e => e.ko > Date.now() - 12 * 864e5);
+  if(evs.length){
+    const eu = euroInfo(p);
+    h += `<div class="pvsec"><h3>Europapokal & Ligapokal</h3>${eu && eu.risk ? `<div style="margin-bottom:8px"><span class="pvst ${eu.risk === 'hoch' ? 'bad' : 'warn'}">🔄 Rotation im nächsten PL-Spiel ${eu.risk === 'hoch' ? 'wahrscheinlich' : 'möglich'}</span></div>` : ''}<div class="pvfacts">`
+      + evs.map(e => `<div style="grid-column:1/-1"><span>${esc(e.label)} · ${euroWhen(e.ko)}</span>${esc(e.home)} – ${esc(e.away)}${e.hs != null ? ` <b>${e.hs}:${e.as}</b>` : ''}${e.state === 'post' ? ` · ${esc(euroAppTxt(e, (euroApps[p.id] || {})[e.id] || null))}` : e.state === 'in' ? ' · läuft' : ' · steht an'}</div>`).join('')
+      + `</div></div>`;
+  }
 
   // News
   const ki = kiOf(p);
@@ -3119,9 +3235,18 @@ $('horizon').addEventListener('change', e => { state.horizon = +e.target.value; 
 $('fitOnly').addEventListener('change', e => { state.fitOnly = e.target.checked; renderTable(); });
 $('thead').addEventListener('click', e => {
   const th = e.target.closest('th'); if(!th) return;
-  const c = COLS.find(c=>c.k===th.dataset.k); if(!c || c.nosort) return;
+  const c = activeCols().find(c=>c.k===th.dataset.k); if(!c || c.nosort) return;
   if(state.sort===c.k) state.dir *= -1; else { state.sort=c.k; state.dir = c.l ? 1 : -1; }
   renderHead(); renderTable();
+});
+state.tm = (() => { try { return localStorage.getItem('plscout_tableMode') === 'gw' ? 'gw' : 'std'; } catch(e){ return 'std'; } })();
+const syncTm = () => $('tableMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tm === state.tm));
+syncTm();
+$('tableMode').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tm]'); if(!b) return;
+  state.tm = b.dataset.tm; try { localStorage.setItem('plscout_tableMode', state.tm); } catch(_){}
+  if(!activeCols().some(c => c.k === state.sort)){ state.sort = state.tm === 'gw' ? 'gsum' : 'score'; state.dir = -1; }
+  syncTm(); renderHead(); renderTable();
 });
 $('cmp').addEventListener('click', e => {
   const id = +e.target.dataset.rm; if(!id) return; toggleSelect(id);
@@ -3256,6 +3381,7 @@ for(const id of ['foldTop','foldKi','foldFilter','foldMem','foldLeague']){ const
     loadPrior().then(renderAll);
     loadPastSl().then(renderAll);
     Promise.all([loadOdds(), loadMatchAi(nextGw)]).then(renderAll); // Matchups fliessen in Prognose und Aufstellung ein
+    loadEuro().then(renderAll); // Europapokal/Ligapokal für Rotations-Hinweise
     loadHistory().then(async () => {
       renderAll();
       await calibrate();
