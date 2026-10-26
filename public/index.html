@@ -2832,6 +2832,7 @@ async function loadEvalExtras(gws){
   if(evalLoading) return; evalLoading = true;
   try {
     const season = sleeper.season || new Date().getFullYear();
+    if(!oddsHistIdx){ await loadOddsHist(); if(oddsHistIdx) for(const k in evalCache) delete evalCache[k]; } // Rückrechnung mit Quoten neu
     await Promise.all([...evalProjWeeks(gws).map(async g => {
       if(!evalProj[g] && sleeper.matchPid && sleeper.scoringSettings){
         try { const arr = await getJSON(`/api/sl/projections/clubsoccer:epl/${season}/${g}?season_type=regular`); const m = {};
@@ -2854,11 +2855,15 @@ function slCalBefore(g){
 let oddsHistIdx = null, oddsHistInfo = null;
 async function loadOddsHist(){
   if(oddsHistIdx) return;
-  let j; try { j = await getJSON('/api/odds?hist=1'); } catch(e){ return; }
-  if(!j || !j.rows || !j.rows.length) return;
+  let j; try { j = await getJSON('/api/odds?hist=1'); } catch(e){ j = null; }
+  // dazu die aktuellen Quoten (enthalten nach dem Wochenende noch die Spiele, die in der Saison-Datei erst später erscheinen)
+  const rows = [...((j && j.rows) || []), ...((oddsData && oddsData.rows) || [])];
+  if(!rows.length) return;
   const byKey = {}; for(const id in teams) byKey[teamKey(teams[id].name)] = +id;
-  const idx = {}; for(const r of j.rows){ const h = byKey[r.hk], a = byKey[r.ak]; if(h && a) (idx[h + '-' + a] ||= []).push(r); }
-  oddsHistIdx = idx; oddsHistInfo = { n: j.rows.length, season: j.season };
+  const idx = {};
+  for(const r of rows){ const h = byKey[r.hk], a = byKey[r.ak]; if(!h || !a) continue; const L = (idx[h + '-' + a] ||= []);
+    if(!L.some(x => x.ko && r.ko && Math.abs(x.ko - r.ko) < 36 * 3600e3)) L.push(r); }
+  oddsHistIdx = idx; oddsHistInfo = { n: rows.length, season: j && j.season };
 }
 const oddsHistFor = f => { const rs = oddsHistIdx && oddsHistIdx[f.team_h + '-' + f.team_a]; if(!rs) return null; const ko = Date.parse(f.kickoff_time); return rs.find(r => !r.ko || !isFinite(ko) || Math.abs(r.ko - ko) < 36 * 3600e3) || null; };
 let evalByIdCache = null;
@@ -3058,7 +3063,7 @@ function renderEval(){
     + clubs.map(c => { const d = c.actual - c.pred, dg = c.goals - c.lam;
       return `<tr data-evrow-club="${c.tid}" style="cursor:pointer"><td class="l">${esc(teams[c.tid]?.name || '')} <span class="nodata">›</span></td><td>${fmt(c.lam,1)}</td><td class="${devCls(dg * 2)}">${c.goals}</td><td>${fmt(c.pred,1)}</td><td><b>${fmt(c.actual,1)}</b></td><td class="${devCls(d / (4 * sel.length))}">${sgn(d)}</td></tr>`; }).join('')
     + `</tbody></table></div></div>`;
-  h += `<div class="nodata" style="margin-top:8px">«Rückrechnung» = unser heutiges Modell mit dem Wissensstand vor dem Spieltag (ohne damalige News, Quoten und Sleeper-Anteil). «gespeichert» = die echte Prognose der Seite kurz vor dem ersten Anpfiff der Runde.</div>`;
+  h += `<div class="nodata" style="margin-top:8px">«Rückrechnung» = unser heutiges Modell mit dem Wissensstand vor dem Spieltag (inkl. Wettquoten vom Freitag davor, ohne damalige News und ohne Sleeper-Anteil). «gespeichert» = die echte Prognose der Seite kurz vor dem ersten Anpfiff der Runde.</div>`;
   el.innerHTML = h;
   el.querySelectorAll('[data-evgw]').forEach(b => b.onclick = () => { evalState.gw = b.dataset.evgw; evalState.all = false; renderEval(); });
   el.querySelectorAll('[data-evwho]').forEach(b => b.onclick = () => { evalState.who = b.dataset.evwho; store.set('evWho', evalState.who); evalState.all = false; renderEval(); });
