@@ -2451,7 +2451,11 @@ function renderLineup(){
   // Europapokal/Ligapokal: Rotationsgefahr bei Startelf-Spielern
   for(const x of xiRows){ if(!x.p || x.locked) continue; const eu = euroInfo(x.p); if(!eu || !eu.risk) continue;
     const e = eu.before || eu.after;
-    tips.push(`🔄 <b>${esc(x.p.name)}</b> – Rotation ${eu.risk === 'hoch' ? 'wahrscheinlich' : 'möglich'}: ${esc(teams[x.p.teamId]?.short || '')} spielt${eu.before ? `e ${esc(e.label)} ${euroWhen(e.ko)} (${esc(euroAppTxt(eu.before, eu.app) || 'Aufstellung folgt')})` : ` ${esc(e.label)} ${euroWhen(e.ko)}`}. Aufstellung vor dem Anpfiff prüfen.`); }
+    const club = esc(teams[x.p.teamId]?.short || '');
+    const what = eu.before
+      ? (eu.before.state === 'post' ? `${club} spielte ${esc(e.label)} am ${euroWhen(e.ko)} – ${esc(x.p.name)}: ${esc(euroAppTxt(eu.before, eu.app))}` : `${club} spielt am ${euroWhen(e.ko)} ${esc(e.label)}, ${fmt(eu.gapB,1)} Tage vor dem PL-Spiel`)
+      : `${club} spielt ${fmt(eu.gapA,1)} Tage nach dem PL-Spiel ${esc(e.label)} (${euroWhen(e.ko)})`;
+    tips.push(`🔄 <b>${esc(x.p.name)}</b> – Rotation ${eu.risk === 'hoch' ? 'wahrscheinlich' : 'möglich'}: ${what}. Aufstellung vor dem Anpfiff prüfen.`); }
   // Spielvorschau der KI: erwähnt sie einen Startelf-Spieler mit Ausfall/Rotation, als Hinweis zeigen
   const aiBy = matchAi && matchAi.gw === gw ? Object.fromEntries((matchAi.items || []).map(x => [x.id, x])) : {};
   const NEG = /(fraglich|fällt|fehlt|fehlen|verletz|gesperrt|sperre|angeschlagen|ausfall|rotation|rotier|geschont|bank|nicht im kader|unsicher|offen)/i;
@@ -2468,7 +2472,7 @@ function renderLineup(){
     const alt = bench.filter(q => !r.lockedOf(q) && slPos(q).some(y => ok.includes(y))).map(q => ({ q, t: koTime(r.fxOf(q)) })).filter(z => z.t && z.t >= t0).sort((a,b) => r.valOf(b.q) - r.valOf(a.q))[0];
     if(alt) tips.push(`<b>${esc(p.name)}</b> (Startchance ${Math.round((p.pStart || 0) * 100)} %): Aufstellung ca. 1 Std. vor Anpfiff (${koStr(t0)}) prüfen – steht er nicht in der Startelf, gegen <b>${esc(alt.q.name)}</b> (${koStr(alt.t)}) tauschen.`);
   }
-  if(tips.length) h += `<div class="lnsec"><h3><span>Hinweise</span></h3>${tips.map(t => `<div class="lntip">⏱ ${t}</div>`).join('')}<div class="nodata">Sleeper sperrt jeden Spieler erst beim Anpfiff seines Spiels – bis dahin kannst du tauschen.</div></div>`;
+  if(tips.length) h += `<div class="lnsec"><h3><span>Hinweise</span></h3>${tips.map(t => `<div class="lntip">${/^(⏱|📰|🔄)/u.test(t) ? '' : '⏱ '}${t}</div>`).join('')}<div class="nodata">Sleeper sperrt jeden Spieler erst beim Anpfiff seines Spiels – bis dahin kannst du tauschen.</div></div>`;
   h += `<div class="lnfoot"><a href="https://sleeper.com/leagues/${esc(sleeper.leagueId)}/team" target="_blank" rel="noopener">In Sleeper umstellen ↗</a><span class="nodata">Symbol antippen: ☆ → 🔒 behalten (nie abgeben) → ★ immer aufstellen (wenn fit) → ☆ · Doppeltipp = Profil</span></div>`;
   el.innerHTML = h;
   const sel = $('lnMoves'); if(sel) sel.onchange = e => { store.set('lineupMoves', +e.target.value); renderLineup(); };
