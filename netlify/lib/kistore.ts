@@ -97,3 +97,18 @@ export async function saveMatchAi(gw: number, d: any) {
   if (items.length) await store().setJSON(`match-ai-${gw}`, out);
   return out;
 }
+
+// Gespeicherte Prognose kurz vor einem Spieltag (für die Auswertung «Prognose vs. echte Punkte»)
+export async function loadPredSnap(gw: number): Promise<any> {
+  return (await store().get(`pred-${gw}`, { type: "json" }).catch(() => null)) || null;
+}
+export async function savePredSnap(gw: number, preds: unknown) {
+  const out: Record<string, number> = {}; let n = 0;
+  for (const [k, v] of Object.entries(preds && typeof preds === "object" ? (preds as Record<string, unknown>) : {})) {
+    const id = Number(k), x = Number(v);
+    if (Number.isInteger(id) && id > 0 && id < 5000 && x >= 0 && x <= 60 && n < 1200) { out[id] = Math.round(x * 10) / 10; n++; }
+  }
+  if (n < 50) return { ok: false, n };
+  await store().setJSON(`pred-${gw}`, { gw, ts: Date.now(), preds: out });
+  return { ok: true, n };
+}
