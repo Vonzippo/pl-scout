@@ -2897,11 +2897,11 @@ function backtestGw(k, cfg = MODEL){
       if(od){ lf = cfg.odds * (home ? od.xg.h : od.xg.a) + (1 - cfg.odds) * lf; la = cfg.odds * (home ? od.xg.a : od.xg.h) + (1 - cfg.odds) * la; }
       const e90 = xMin / 90;
       const ph = phR && phR.get(p);
-      const model = ph
-        ? pStart * s.start + e90 * (xg90 * (lf / T.att) * G + xa90 * (lf / T.att) * A + yc90 * s.yellow + ph.off * Math.pow(lf / T.att, cfg.phK ?? 1) + ph.def * Math.pow(la / T.def, cfg.phK ?? 1))
-          + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC
-        : pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
+      const mT = pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC;
+      const mP = ph ? pStart * s.start + e90 * (xg90 * (lf / T.att) * G + xa90 * (lf / T.att) * A + yc90 * s.yellow + ph.off * Math.pow(lf / T.att, cfg.phK ?? 1) + ph.def * Math.pow(la / T.def, cfg.phK ?? 1))
+          + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC : mT;
+      const b = ph ? (cfg.phBlend ?? 1) : 0, model = (1 - b) * mT + b * mP;
       const fp = cfg.shrinkTo === 'model' ? (apps.length * formPartRaw + cfg.formShrink * model) / (apps.length + cfg.formShrink) : formPart;
       pred += cfg.wModel * model + (1 - cfg.wModel) * fp;
     }
@@ -3005,6 +3005,8 @@ window.plExperiment = async (cfgs, opt = {}) => {
       for(const [fid, o] of Object.entries(bt.players)){
         const r0 = ref.players[fid]; if(!r0 || r0.known || !(r0.min > 0 || r0.pred >= 2)) continue;
         if(opt.who === 'mine' ? !mine(+fid) : opt.who !== 'all' && !owned(+fid)) continue;
+        if(opt.pos && (byId[fid] || {}).pos !== opt.pos) continue;
+        if(opt.ids && !opt.ids.includes(+fid)) continue;
         const pos = (byId[fid] || {}).pos, c = cal[pos] || 1;
         let pr = o.pred * (biasCal ? (fac[pos] || 1) : 1);
         if(sleeperW && pj[fid] != null) pr = (1 - sleeperW) * pr + sleeperW * pj[fid] * c;
