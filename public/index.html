@@ -686,7 +686,7 @@ function matchSetup(p, f){
 //  recency L3: Einsatz-/Startelf-Chance 50 % letzte 3, 30 % letzte 5, 20 % letzte 10 Spiele (vorher 60 % L5 / 40 % L10)
 //  wModel: pro Spiel 80 % Modell (Minuten × Raten × Gegner) und 20 % Form (vorher 65/35)
 //  sleeperW: Anteil der kalibrierten Sleeper-Projektion am nächsten Spieltag; sleeperWxi: wenn die Startelf offiziell ist
-const MODEL = { wModel: 0.8, formN: 10, formShrink: 6, recency: 'L3', home: 0.1, opp: 1, sleeperW: 0.35, sleeperWxi: 0.35 };
+const MODEL = { wModel: 0.8, formN: 10, formShrink: 6, recency: 'L3', home: 0.1, opp: 1, sleeperW: 0.35, sleeperWxi: 0.5 };
 const rateMix = (L, f, cfg = MODEL) => { const r = A => A.length ? A.filter(f).length / A.length : 0;
   return cfg.recency === 'L3' ? 0.5 * r(L.slice(-3)) + 0.3 * r(L.slice(-5)) + 0.2 * r(L) : 0.6 * r(L.slice(-5)) + 0.4 * r(L); };
 const shrinkForm = (apps, posMean, cfg = MODEL) => { const n = apps.length, raw = n ? apps.reduce((t,x) => t + x.pts, 0) / n : 0;
@@ -2271,6 +2271,7 @@ function slotAllows(slot){
 const natPos = p => { const n = SLP_FROM_FPL[p.scorePos || p.pos], sp = slPos(p); return sp.includes(n) ? n : sp[0]; };
 const slotLabel = sl => sl.endsWith('_FLEX') ? slotAllows(sl).map(x => SLOT_DE[x] || x).join('/') : (SLOT_DE[sl] || sl);
 function isOut(p){ // fällt aus (Verletzung/Sperre) – IR allein zählt nicht: wer wieder fit ist, muss aus IR zurück
+  if(p.xi === 'start') return false; // steht in der offiziellen Startelf – Verletzungsmeldung ist überholt
   if(['i','s','u','n'].includes(p.status) || p.chance === 0) return true;
   const sp = (sleeper.spByFpl || {})[p.id], st = sp && sp.injury_status ? String(sp.injury_status).toLowerCase() : '';
   if(['out','ir','sus','na'].includes(st)){
@@ -2790,7 +2791,8 @@ function backtestGw(k, cfg = MODEL){
     const apps = L.filter(x => x.min > 0).slice(-cfg.formN);
     const l10 = shrinkForm(apps, posPts[p.pos], cfg);
     const mpa = apps.length ? apps.reduce((t,x) => t + x.min, 0) / apps.length : 0;
-    const formPart = l10 * Math.min(1, xMin / Math.max(30, mpa || 90));
+    const minF = Math.min(1, xMin / Math.max(30, mpa || 90)), formPart = l10 * minF;
+    const formPartRaw = (apps.length ? apps.reduce((t,x) => t + x.pts, 0) / apps.length : 0) * minF;
     let pred = 0;
     for(const f of fx){
       const home = f.team_h === p.teamId, T = tm[p.teamId], O = tm[home ? f.team_a : f.team_h]; if(!T || !O) continue;
@@ -2799,7 +2801,8 @@ function backtestGw(k, cfg = MODEL){
       const e90 = xMin / 90;
       const model = pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC;
-      pred += cfg.wModel * model + (1 - cfg.wModel) * formPart;
+      const fp = cfg.shrinkTo === 'model' ? (apps.length * formPartRaw + cfg.formShrink * model) / (apps.length + cfg.formShrink) : formPart;
+      pred += cfg.wModel * model + (1 - cfg.wModel) * fp;
     }
     const r = (real[p.id] || {})[k], st = (histById[p.id] || {})[k];
     const o = { pred: Math.max(0, pred), actual: r ? r.pts : 0, min: r ? r.min : (st ? num(st.minutes) : 0), tid: p.teamId, xMin, pS: pStart, n: fx.length };
@@ -2872,7 +2875,7 @@ window.plExperiment = async (cfgs, opt = {}) => {
   const out = [];
   for(const cfg0 of cfgs){
     const { sleeperW = 0, slLast = 0, slPrev = 0, biasCal = false, tag, ...cfg } = cfg0;
-    const res = { cfg: cfg0, gw: {} }; let tA = 0, tN = 0, tB = 0, tS = 0, tH = 0;
+    const res = { cfg: cfg0, gw: {} }; let tA = 0, tN = 0, tB = 0, tS = 0, tH = 0; const BK = [0, 2, 4, 6, 8, 99], bk = BK.slice(0, -1).map(() => ({ n: 0, p: 0, a: 0, e: 0 }));
     for(const g of gws){
       const bt = backtestGw(g, cfg), ref = backtestGw(g, {}); if(!bt || !ref) continue;
       const cal = slCalBefore(g);
@@ -2892,10 +2895,13 @@ window.plExperiment = async (cfgs, opt = {}) => {
         if(slPrev){ let rr = null; for(let w = g - 1; w >= g - 4 && rr == null; w--){ const v = (evalProj[w] || {})[fid]; if(v != null) rr = v; }
           if(rr != null) pr = (1 - slPrev) * pr + slPrev * rr * c * Math.min(1, (o.xMin || 0) / 90); }
         const e = o.actual - pr; A += Math.abs(e); B += e; S += e * e; H += Math.abs(e) <= 3 ? 1 : 0; N++;
+        const bi = BK.findIndex((x, i) => pr >= x && pr < BK[i + 1]); if(bi >= 0){ const b = bk[bi]; b.n++; b.p += pr; b.a += o.actual; b.e += Math.abs(e); }
       }
       res.gw[g] = { mae: +(A / N).toFixed(3), bias: +(B / N).toFixed(2), n: N }; tA += A; tB += B; tS += S; tH += H; tN += N;
     }
-    res.mae = +(tA / tN).toFixed(3); res.bias = +(tB / tN).toFixed(2); res.rmse = +Math.sqrt(tS / tN).toFixed(3); res.hit3 = +(tH / tN).toFixed(3); res.n = tN; out.push(res);
+    res.mae = +(tA / tN).toFixed(3); res.bias = +(tB / tN).toFixed(2); res.rmse = +Math.sqrt(tS / tN).toFixed(3); res.hit3 = +(tH / tN).toFixed(3); res.n = tN;
+    res.buckets = bk.map((b, i) => `${BK[i]}–${BK[i + 1] === 99 ? '' : BK[i + 1]}: n ${b.n} Progn ${b.n ? (b.p / b.n).toFixed(1) : '-'} echt ${b.n ? (b.a / b.n).toFixed(1) : '-'} MAE ${b.n ? (b.e / b.n).toFixed(2) : '-'}`);
+    out.push(res);
   }
   return out;
 };
