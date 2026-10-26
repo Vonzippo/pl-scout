@@ -82,7 +82,7 @@ Antworte nur mit JSON: {"add":["..."],"remove":["id"]} – leere Listen, wenn ni
   // Prognose-Schnappschuss vor einem Spieltag: lesen und speichern (für die Auswertung)
   if (path.endsWith("/predsnap")) {
     if (req.method === "GET") { const gw = Number(url.searchParams.get("gw")); if (!(gw >= 1 && gw <= 38)) return json(400, { error: "gw fehlt" }); return json(200, (await loadPredSnap(gw)) || {}, { "cache-control": "no-store" }); }
-    if (req.method === "POST") { const body: any = await req.json().catch(() => null); const gw = Number(body?.gw); if (!(gw >= 1 && gw <= 38)) return json(400, { error: "gw fehlt" }); return json(200, await savePredSnap(gw, body?.preds)); }
+    if (req.method === "POST") { const body: any = await req.json().catch(() => null); const gw = Number(body?.gw); if (!(gw >= 1 && gw <= 38)) return json(400, { error: "gw fehlt" }); return json(200, await savePredSnap(gw, body?.preds, { own: body?.own, sl: body?.sl, model: body?.model })); }
   }
 
   // KI-Spielvorschau: lesen (alle), speichern (nur die Edge-Funktion mit Geheimnis)

@@ -211,7 +211,7 @@ td.muted{color:var(--muted)}
 .pitch{position:relative;max-width:820px;margin:0 auto;padding:4px 6px 10px;border-radius:12px;background:repeating-linear-gradient(180deg,#14532d 0 46px,#176337 46px 92px);border:1px solid #1f7a45;display:flex;flex-direction:column;gap:12px;overflow:hidden}
 .pitch:before{content:'';position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border:1px solid rgba(255,255,255,.2);border-radius:50%}
 .pitch:after{content:'';position:absolute;left:0;right:0;top:50%;border-top:1px solid rgba(255,255,255,.2)}
-.prow{display:flex;justify-content:center;align-items:center;gap:6px;position:relative;z-index:1;min-height:58px;padding:13px 0 0}
+.prow{display:flex;justify-content:center;align-items:center;gap:6px;position:relative;z-index:1;min-height:58px;padding:18px 0 0}
 .pline{position:absolute;left:4px;top:0;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55)}
 .pchip{flex:0 1 92px;min-width:0;background:rgba(8,18,13,.85);border:1px solid rgba(255,255,255,.22);border-radius:9px;padding:5px 4px;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:1px}
 .pchip b{font-size:15px;color:#fff;font-variant-numeric:tabular-nums}
@@ -266,7 +266,9 @@ td.muted{color:var(--muted)}
 .evtag.mine{color:#37e39b;border-color:rgba(55,227,155,.5)}.evtag.free{color:#5aa9ff;border-color:rgba(90,169,255,.5)}
 .eub{display:inline-block;font-size:9px;font-weight:800;line-height:14px;padding:0 4px;border-radius:4px;margin-left:4px;background:#1e3a8a;color:#cfe0ff;vertical-align:1px;white-space:nowrap;cursor:help}
 .eub.r-hoch{background:#7c2d12;color:#ffd7c2}.eub.r-mittel{background:#5b4513;color:#ffe2a8}
-.pchip{position:relative}.pceu{position:absolute;top:2px;right:3px}.pceu .eub{margin:0}
+.pchip{position:relative}.pceu,.pcxi{position:absolute;top:-8px;z-index:2;line-height:0}.pceu{right:2px}.pcxi{left:2px}.pceu .eub,.pcxi .xib{margin:0}
+.xib{display:inline-block;font-size:9px;font-weight:800;line-height:14px;padding:0 4px;border-radius:4px;margin-left:4px;vertical-align:1px;white-space:nowrap;cursor:help}
+.xib.s{background:#14532d;color:#bbf7d0}.xib.b{background:#7f1d1d;color:#fecaca}
 .tablemode{margin:0 0 8px}
 .gwc{text-align:center!important}
 .gwv{display:inline-block;min-width:24px;padding:1px 4px;border-radius:5px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center}
@@ -543,7 +545,7 @@ body.noscroll{overflow:hidden}
         <li><b>Einsatzzeit:</b> Minuten der letzten 5 Spiele und Startelf-Quote – ist er Stammspieler?</li>
         <li><b>Trend:</b> letzte 3 Spiele im Vergleich zu den letzten 10.</li>
       </ul>
-      <p class="empty"><b>Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele</b>, gewichtet 40 % / 30 % / 20 % / 10 %. Pro Spiel fliessen ein: erwartete Minuten (inkl. Verletzungen/Sperren und KI-News), Tor-/Assist-Raten inkl. Standardrollen, Stärke von Gegner und eigenem Team, Heim/Auswärts, Zu-Null-Chance, aktuelle Form und für das nächste Spiel die offizielle Sleeper-Projektion. Antippen/Maus über die Prognose zeigt die 4 Spiele einzeln.</p>
+      <p class="empty"><b>Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele</b>, gewichtet 40 % / 30 % / 20 % / 10 %. Pro Spiel fliessen ein: erwartete Minuten (Startelf-Quote vor allem der letzten 3 Spiele, Verletzungen/Sperren und KI-News), Tor-/Assist-Raten inkl. Standardrollen, Stärke von Gegner und eigenem Team (aus Wettquoten, sofern vorhanden), Heim/Auswärts, Zu-Null-Chance – das Modell zählt 80 % – und zu 20 % die aktuelle Form (echte Punkte pro Einsatz, bei wenigen Einsätzen zum Positionsschnitt hin geglättet). Für das nächste Spiel kommt die kalibrierte Sleeper-Projektion dazu (35 %). Sobald die offizielle Startelf feststeht (ca. 40–60 Min. vor Anpfiff), rechnet die Prognose mit «spielt» (S11) bzw. «Bank». Antippen/Maus über die Prognose zeigt die 4 Spiele einzeln.</p>
     </details>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="ghost" id="resetScoring">Standard wiederherstellen</button>
@@ -679,8 +681,27 @@ function matchSetup(p, f){
   if(od){ const mf = f.home ? od.xg.h : od.xg.a, ma = f.home ? od.xg.a : od.xg.h; lamFor = 0.75 * mf + 0.25 * lamFor; lamAg = 0.75 * ma + 0.25 * lamAg; }
   return { lamFor, lamAg, k: lamFor / T.att, kAg: lamAg / T.def, odds: !!od };
 }
+// Prognose-Parameter – per Rückrechnung GW 4–8 bestimmt (Okt. 2026), gelten für Live-Prognose UND Auswertung:
+//  formShrink: Form zum Positionsschnitt hin geglättet (wie 6 zusätzliche Durchschnitts-Spiele) → weniger Ausreisser nach 1–2 Glücksspielen
+//  recency L3: Einsatz-/Startelf-Chance 50 % letzte 3, 30 % letzte 5, 20 % letzte 10 Spiele (vorher 60 % L5 / 40 % L10)
+//  wModel: pro Spiel 80 % Modell (Minuten × Raten × Gegner) und 20 % Form (vorher 65/35)
+//  sleeperW: Anteil der kalibrierten Sleeper-Projektion am nächsten Spieltag; sleeperWxi: wenn die Startelf offiziell ist
+const MODEL = { wModel: 0.8, formN: 10, formShrink: 6, recency: 'L3', home: 0.1, opp: 1, sleeperW: 0.35, sleeperWxi: 0.35 };
+const rateMix = (L, f, cfg = MODEL) => { const r = A => A.length ? A.filter(f).length / A.length : 0;
+  return cfg.recency === 'L3' ? 0.5 * r(L.slice(-3)) + 0.3 * r(L.slice(-5)) + 0.2 * r(L) : 0.6 * r(L.slice(-5)) + 0.4 * r(L); };
+const shrinkForm = (apps, posMean, cfg = MODEL) => { const n = apps.length, raw = n ? apps.reduce((t,x) => t + x.pts, 0) / n : 0;
+  return cfg.formShrink > 0 ? (n * raw + cfg.formShrink * (posMean || 0)) / (n + cfg.formShrink) : raw; };
+function posFormMean(logOf){ // Ø Punkte pro Einsatz (ab 45 Min.) je Position
+  const acc = {}; for(const p of players) for(const x of (logOf(p) || [])) if(x.min >= 45){ const a = (acc[p.pos] ||= { t: 0, n: 0 }); a.t += x.pts; a.n++; }
+  return Object.fromEntries(Object.entries(acc).map(([k,a]) => [k, a.t / a.n]));
+}
+// Bestätigte Startelf seines Klubs für den nächsten Spieltag (aus der Sleeper-Projektion, siehe loadSleeperStats)
+const xiOf = p => { const x = sleeper.xi && sleeper.xi[p.teamId]; return x && x.gw === nextGw ? x : null; };
+// Chance auf Einwechslung, wenn er nicht in der Startelf steht (aus seinen letzten Spielen)
+const subRate = L => { const ns = (L || []).filter(x => !x.start); return ns.length >= 2 ? Math.min(0.75, ns.filter(x => x.min > 0).length / ns.length) : 0.3; };
 function computeXfp(){
   const s = scoring;
+  const posPts = posFormMean(p => p.log);
   // Positions-Mittelwerte für geglättete Raten pro 90
   const pm = {};
   for(const pos of ['GKP','DEF','MID','FWD']){
@@ -694,10 +715,10 @@ function computeXfp(){
     const avail = newsValue(p);
     let pStart, pSub, mStart = 85, mSub = 20;
     if(p.log && p.log.length){
-      const L = p.log, L5 = L.slice(-5);
+      const L = p.log;
       const st = g => g.start, ap = g => g.min > 0;
-      pStart = 0.6 * (L5.filter(st).length / L5.length) + 0.4 * (L.filter(st).length / L.length);
-      const app = 0.6 * (L5.filter(ap).length / L5.length) + 0.4 * (L.filter(ap).length / L.length);
+      pStart = rateMix(L, st);
+      const app = rateMix(L, ap);
       pSub = Math.max(0, app - pStart);
       const sm = L.filter(st); if(sm.length) mStart = Math.min(90, sm.reduce((t,g)=>t+g.min,0) / sm.length);
       const sb = L.filter(g => ap(g) && !st(g)); if(sb.length) mSub = sb.reduce((t,g)=>t+g.min,0) / sb.length;
@@ -705,6 +726,9 @@ function computeXfp(){
       const g = Math.max(1, gamesPlayed); pStart = Math.min(1, p.starts / g); pSub = Math.max(0, Math.min(1, (p.minutes > 0 ? 1 : 0)) - pStart) * 0.5;
     }
     pStart *= avail; pSub = Math.min(pSub * avail, 1 - pStart);
+    // Offizielle Startelf bekannt (ca. 40–60 Min. vor Anpfiff)? Dann steht fest, wer beginnt.
+    const xi = xiOf(p); p.xi = xi ? (xi.ids.has(p.id) ? 'start' : 'bank') : '';
+    if(xi){ if(p.xi === 'start'){ pStart = 1; pSub = 0; } else { pStart = 0; pSub = avail > 0 ? subRate(p.log) : 0; } }
     p.pStart = pStart; p.xMin = pStart * mStart + pSub * mSub;
     // Raten pro 90 inkl. Standardsituationen
     let xg90 = per90(p, 'xg', 'xg'), xa90 = per90(p, 'xa', 'xa');
@@ -725,12 +749,14 @@ function computeXfp(){
       return pStart * s.start + e90 * (xg90 * m.k * (G + LR.xg) + xa90 * m.k * (A + LR.xa) + sv90 * m.kAg * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-m.lamAg) * CS + e90 * m.lamAg * GC;
     };
-    // 35 % aktuelle Form (echte Punkte pro Einsatz, nach erwarteten Minuten gewichtet) – jüngste echte Punkte sind laut Backtest der stärkste Prädiktor
-    const formPart = (p.l10 || 0) * Math.min(1, (p.xMin || 0) / Math.max(30, p.minPerApp || p.minL5 || 90));
+    // 20 % aktuelle Form (echte Punkte pro Einsatz, zum Positionsschnitt geglättet, nach erwarteten Minuten gewichtet)
+    const apps = (p.log || []).filter(g => g.min > 0).slice(-MODEL.formN);
+    p.formAdj = p.log && p.log.length ? shrinkForm(apps, posPts[p.pos]) : (p.l10 || 0);
+    const formPart = p.formAdj * Math.min(1, (p.xMin || 0) / Math.max(30, p.minPerApp || p.minL5 || 90));
     p.slp = sleeper.proj && sleeper.proj[p.id] != null ? sleeper.proj[p.id] * ((sleeper.projCal || {})[p.pos] || 1) : undefined;
     // Prognose: erwartete Punkte der nächsten 4 Spiele, gewichtet 40/30/20/10
     const PW = [0.4, 0.3, 0.2, 0.1];
-    p.progParts = models.map((x, i) => { const v = 0.65 * expPts(x.m) + 0.35 * formPart; return { gw: x.f.gw, opp: x.f.opp, home: x.f.home, w: PW[i], pts: v, own: v,
+    p.progParts = models.map((x, i) => { const v = MODEL.wModel * expPts(x.m) + (1 - MODEL.wModel) * formPart; return { gw: x.f.gw, opp: x.f.opp, home: x.f.home, w: PW[i], pts: v, own: v,
       tore: x.m.lamFor, gegentore: x.m.lamAg, cs: Math.exp(-x.m.lamAg) }; });
     const finishProg = () => {
       const ws = p.progParts.reduce((t,x) => t + x.w, 0);
@@ -763,10 +789,12 @@ function computeXfp(){
     }
     out.sort((a,b)=>a-b);
     const model = out.reduce((a,b)=>a+b,0) / N;
-    p.xfp = 0.65 * model + 0.35 * formPart;
-    p.xfpOwn = p.xfp; // unsere Wertung ohne Sleeper-Projektion (für die Aufstellung)
-    // Prognose von Sleeper (Profi-Projektion, Liga-Wertung) zu 35 % einmischen, falls vorhanden
-    if(p.slp != null) p.xfp = 0.65 * p.xfp + 0.35 * p.slp;
+    p.xfp = MODEL.wModel * model + (1 - MODEL.wModel) * formPart;
+    p.xfpOwn = p.xfp; // unser Modell ohne Sleeper-Projektion
+    // Prognose von Sleeper (Profi-Projektion, Liga-Wertung, kalibriert) einmischen, falls vorhanden – nicht bei gemeldetem Ausfall
+    // (Sleeper führt nur die erwartete bzw. offizielle Startelf; bei bestätigter Startelf zählt sleeperWxi)
+    const sw = xi ? MODEL.sleeperWxi : MODEL.sleeperW;
+    if(p.slp != null && (avail > 0 || p.xi === 'start')) p.xfp = (1 - sw) * p.xfp + sw * p.slp;
     const shift = p.xfp - model;
     p.floor = out[Math.floor(N * 0.15)] + shift; p.ceil = out[Math.floor(N * 0.85)] + shift;
     // nächstes Spiel in der Prognose = xFP (inkl. Sleeper-Projektion)
@@ -1232,9 +1260,20 @@ async function loadSleeperStats(){
   // Sleeper-Prognose für den nächsten Spieltag
   try {
     const pr = await getJSON(`/api/sl/projections/clubsoccer:epl/${season}/${nextGw}?season_type=regular`);
-    const proj = {};
-    for(const e of pr || []){ if(!e || !e.stats) continue; const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue; proj[fid] = (proj[fid] || 0) + leaguePoints(e.stats, ss); }
+    const proj = {}, byTeam = {}, byId = Object.fromEntries(players.map(p => [p.id, p]));
+    for(const e of pr || []){ if(!e || !e.stats) continue; const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue; proj[fid] = (proj[fid] || 0) + leaguePoints(e.stats, ss);
+      const pl = byId[fid], up = +e.updated_at || 0; if(!pl) continue;
+      const u = (byTeam[pl.teamId] ||= { ids: new Set(), min: Infinity, max: 0 }); u.ids.add(fid); u.min = Math.min(u.min, up); u.max = Math.max(u.max, up); }
     sleeper.proj = proj;
+    // Sleeper führt pro Klub nur die 11 Starter und schreibt sie nach Bekanntgabe der offiziellen Aufstellung (60 Min. vor Anpfiff) neu.
+    // Wurden alle 11 frühestens 55 Min. vor Anpfiff aktualisiert, gilt die Startelf als bestätigt (geprüft an GW 5–8: Liste = echte Startelf).
+    const xi = {};
+    for(const [tid, u] of Object.entries(byTeam)){
+      const fx = (allFixtures || []).filter(f => f.event === nextGw && (f.team_h === +tid || f.team_a === +tid));
+      const ko = fx.length === 1 ? koTime(fx[0]) : null;
+      if(ko && u.ids.size >= 10 && u.min >= ko - 55 * 60e3) xi[tid] = { gw: nextGw, ids: u.ids, at: u.max, ko };
+    }
+    sleeper.xi = xi;
     // Kalibrierung: Sleeper-Prognosen unterschätzen Verteidiger/Torhüter stark (Defensivaktionen fehlen) → Faktor je Position aus den letzten 3 Spieltagen (echt / prognostiziert)
     try {
       const wks = have.filter(w => w < nextGw).slice(-3), acc = {};
@@ -1245,8 +1284,9 @@ async function loadSleeperStats(){
       sleeper.projCal = Object.fromEntries(Object.entries(acc).filter(([,a]) => a.n >= 15 && a.p > 0).map(([k,a]) => [k, Math.max(0.8, Math.min(2.2, a.r / a.p))]));
     } catch(e){ sleeper.projCal = null; }
     const cal = sleeper.projCal ? Object.entries(sleeper.projCal).map(([k,v]) => `${k} ×${v.toFixed(2)}`).join(', ') : '';
-    dataStatus.proj = { at: Date.now(), ok: Object.keys(proj).length > 0, info: `GW ${nextGw}: ${Object.keys(proj).length} Spieler${cal ? ' · kalibriert ' + cal : ''}` };
-  } catch(e){ sleeper.proj = null; dataStatus.proj = { at: Date.now(), ok: false, info: 'nicht verfügbar' }; }
+    const nXi = Object.keys(sleeper.xi || {}).length;
+    dataStatus.proj = { at: Date.now(), ok: Object.keys(proj).length > 0, info: `GW ${nextGw}: ${Object.keys(proj).length} Spieler${cal ? ' · kalibriert ' + cal : ''}${nXi ? ` · offizielle Startelf bei ${nXi} Klubs` : ''}` };
+  } catch(e){ sleeper.proj = null; sleeper.xi = null; dataStatus.proj = { at: Date.now(), ok: false, info: 'nicht verfügbar' }; }
 }
 async function calibrate(){
   if(calibRunning || sleeper.calibrated || !sleeper.scoringSettings || !histById || !sleeper.matchPid) return;
@@ -1657,10 +1697,13 @@ function nameCell(p){
   const o = Object.keys(sleeper.users).length ? ownerOf(p) : undefined;
   const own = o === undefined && !Object.keys(sleeper.users).length ? '' :
     (!o ? '<span class="otag free">frei</span>' : o === sleeper.me ? '<span class="otag me">ich</span>' : `<span class="otag">${esc(sleeper.users[o]||'?')}</span>`);
-  return `<div class="nm">${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}${euroBadge(p)}</div>
+  return `<div class="nm">${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span> ${news}${spHtml(p)}${euroBadge(p)}${xiBadge(p)}</div>
     <div class="sub"><b>${esc(teams[p.teamId].short)}</b>${own}<span class="fdr sm">${opp}</span></div>`;
 }
 function ownerOf(p){ return sleeper.ownerByFpl[p.id]; }
+// Offizielle Aufstellung bekannt (ca. 40–60 Min. vor Anpfiff): S11 = beginnt, Bank = nicht in der Startelf
+const xiBadge = p => p.xi === 'start' ? '<span class="xib s" title="Offizielle Startelf: beginnt das Spiel">S11</span>'
+  : p.xi === 'bank' ? '<span class="xib b" title="Offizielle Aufstellung: nicht in der Startelf – höchstens Einwechslung">Bank</span>' : '';
 function ownerLabel(p){
   if(!Object.keys(sleeper.users).length) return '';
   const o = ownerOf(p);
@@ -2391,7 +2434,7 @@ function renderLineup(){
   xiRows.sort((a,b) => r.startSlots.indexOf(a.slot) - r.startSlots.indexOf(b.slot));
   const inXI = new Set(xiRows.filter(x => x.p).map(x => x.p.id));
   const tot = r.cur.total + r.lockedTotal, own = r.ownOnly.total + r.lockedTotal;
-  const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>${euroBadge(p)}`;
+  const pl = p => `${favBtn(p)}<span class="pname p-${p.pos}">${esc(p.name)}</span>${euroBadge(p)}${xiBadge(p)}`;
   const fxLine = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')} · ${koStr(koTime(f))}`; };
   const MU = gwMatchUnits(gw);
   const muOf = p => { const f = r.fxOf(p); return f ? MU.unitOf(f, p.teamId) : null; };
@@ -2415,7 +2458,7 @@ function renderLineup(){
     <div class="lnkpi"><div><b>${fmt(tot,1)}</b><small>beste Aufstellung</small></div><div><b>${fmt(own,1)}</b><small>nur dein Kader</small></div><div><b>${fmt(r.curTotal,1)}</b><small>jetzt in Sleeper</small></div></div></div>`;
   // Spielfeld: klare Formation (Sturm oben, Torwart unten)
   const fxShort = p => { const f = r.fxOf(p); if(!f) return 'kein Spiel'; const home = f.team_h === p.teamId; return `${home ? 'vs' : '@'} ${esc(teams[home ? f.team_a : f.team_h]?.short || '?')}`; };
-  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span>${(() => { const b = euroBadge(x.p); return b ? `<span class="pceu">${b}</span>` : ''; })()}${(() => { const u = muOf(x.p); if(!u) return ''; const k = isBack(x.p) ? 'cs' : 'att'; return `<span class="pcm ${MU.lvl(u['r_' + k])}">${k === 'cs' ? 'Zu-Null ' + pct(u.cs) + '%' : '⚽ ' + fmt(u.att,1) + ' Tore'}</span>`; })()}</div>`;
+  const chip = x => `<div class="pchip${x.locked ? ' lock' : adds.has(x.p.id) ? ' add' : !curIds.has(x.p.id) ? ' up' : ''}" data-pid="${x.p.id}" title="${esc(x.p.full || x.p.name)} · Slot ${slotLabel(x.slot)}"><b>${fmt(x.val,1)}</b><span class="pcn">${starts.has(x.p.id) ? '★ ' : ''}${esc(x.p.name)}</span><span class="pcf">${x.locked ? '🔒 ' : ''}${fxShort(x.p)}</span>${(() => { const b = euroBadge(x.p); return b ? `<span class="pceu">${b}</span>` : ''; })()}${x.p.xi ? `<span class="pcxi">${xiBadge(x.p)}</span>` : ''}${(() => { const u = muOf(x.p); if(!u) return ''; const k = isBack(x.p) ? 'cs' : 'att'; return `<span class="pcm ${MU.lvl(u['r_' + k])}">${k === 'cs' ? 'Zu-Null ' + pct(u.cs) + '%' : '⚽ ' + fmt(u.att,1) + ' Tore'}</span>`; })()}</div>`;
   const LINE_DE = { F:'Sturm', M:'Mittelfeld', D:'Abwehr', GK:'Tor' };
   h += `<div class="lnsec"><h3><span>Formation ${formation}</span><span class="nodata" style="text-transform:none;letter-spacing:0">Prognose GW ${gw}: ${fmt(tot,1)}</span></h3><div class="pitch">${['F','M','D','GK'].map(L => { const xs = xiRows.filter(x => x.p && x.line === L); return `<div class="prow"><span class="pline">${LINE_DE[L]} ${xs.length}</span>${xs.map(chip).join('') || '<span class="pcf">–</span>'}</div>`; }).join('')}</div>
     <div class="nodata lnlegend"><span class="lg add"></span>neu holen <span class="lg up"></span>von der Bank rein 🔒 schon angepfiffen · antippen = Profil</div></div>`;
@@ -2470,9 +2513,13 @@ function renderLineup(){
     const t0 = koTime(r.fxOf(p)); if(!t0) continue;
     const ok = slotAllows(x.slot);
     const alt = bench.filter(q => !r.lockedOf(q) && slPos(q).some(y => ok.includes(y))).map(q => ({ q, t: koTime(r.fxOf(q)) })).filter(z => z.t && z.t >= t0).sort((a,b) => r.valOf(b.q) - r.valOf(a.q))[0];
-    if(alt) tips.push(`<b>${esc(p.name)}</b> (Startchance ${Math.round((p.pStart || 0) * 100)} %): Aufstellung ca. 1 Std. vor Anpfiff (${koStr(t0)}) prüfen – steht er nicht in der Startelf, gegen <b>${esc(alt.q.name)}</b> (${koStr(alt.t)}) tauschen.`);
+    if(alt) tips.push(p.xi === 'bank'
+      ? `🪑 <b>${esc(p.name)}</b> steht laut offizieller Aufstellung <b>nicht in der Startelf</b> (Anpfiff ${koStr(t0)}) – gegen <b>${esc(alt.q.name)}</b> (${koStr(alt.t)}) tauschen.`
+      : `<b>${esc(p.name)}</b> (Startchance ${Math.round((p.pStart || 0) * 100)} %): Aufstellung ca. 1 Std. vor Anpfiff (${koStr(t0)}) prüfen – steht er nicht in der Startelf, gegen <b>${esc(alt.q.name)}</b> (${koStr(alt.t)}) tauschen.`);
   }
-  if(tips.length) h += `<div class="lnsec"><h3><span>Hinweise</span></h3>${tips.map(t => `<div class="lntip">${/^(⏱|📰|🔄)/u.test(t) ? '' : '⏱ '}${t}</div>`).join('')}<div class="nodata">Sleeper sperrt jeden Spieler erst beim Anpfiff seines Spiels – bis dahin kannst du tauschen.</div></div>`;
+  { const conf = [...new Set([...xiRows.map(x => x.p), ...bench].filter(q => q && q.xi).map(q => teams[q.teamId]?.short).filter(Boolean))];
+    if(conf.length) tips.push(`✅ Offizielle Aufstellung schon eingerechnet für: ${conf.map(esc).join(', ')} (S11 = beginnt, Bank = nicht in der Startelf).`); }
+  if(tips.length) h += `<div class="lnsec"><h3><span>Hinweise</span></h3>${tips.map(t => `<div class="lntip">${/^(⏱|📰|🔄|🪑|✅)/u.test(t) ? '' : '⏱ '}${t}</div>`).join('')}<div class="nodata">Sleeper sperrt jeden Spieler erst beim Anpfiff seines Spiels – bis dahin kannst du tauschen.</div></div>`;
   h += `<div class="lnfoot"><a href="https://sleeper.com/leagues/${esc(sleeper.leagueId)}/team" target="_blank" rel="noopener">In Sleeper umstellen ↗</a><span class="nodata">Symbol antippen: ☆ → 🔒 behalten (nie abgeben) → ★ immer aufstellen (wenn fit) → ☆ · Doppeltipp = Profil</span></div>`;
   el.innerHTML = h;
   const sel = $('lnMoves'); if(sel) sel.onchange = e => { store.set('lineupMoves', +e.target.value); renderLineup(); };
@@ -2670,10 +2717,10 @@ const evalState = { gw: 'sum', who: store.get('evWho') || 'liga', all: false };
 const evalCache = {}, evalProj = {}, evalSnaps = {};
 let evalLoading = false;
 const evalGws = () => ((histById && histById.__gws) || []).filter(g => g < nextGw && (sleeper.realWeeks || []).includes(g)).slice(-5);
-// Modell-Parameter (Standard = Live-Modell); für Experimente austauschbar
-const BT_DEFAULT = { wModel: 0.65, formN: 10, formShrink: 0, recency: 'L5', home: 0.1, opp: 1 };
-function backtestGw(k, cfg = BT_DEFAULT){
-  cfg = { ...BT_DEFAULT, ...cfg };
+// Modell-Parameter: Standard = Live-Modell (MODEL); für Experimente austauschbar.
+// lineup: true = mit bestätigter Startelf rechnen (Sleepers letzte Prognose vor Anpfiff = die 11 Starter jedes Klubs)
+function backtestGw(k, cfg = MODEL){
+  cfg = { ...MODEL, ...cfg };
   const key = k + '_' + (scoring.lr ? 'c' : 'b') + '_' + JSON.stringify(cfg);
   if(evalCache[key]) return evalCache[key];
   if(!histById) return null;
@@ -2700,7 +2747,9 @@ function backtestGw(k, cfg = BT_DEFAULT){
     pm[pos] = { xg: r9('xg'), xa: r9('xa'), saves: r9('saves'), yellow: r9('yellow'), tackles: r9('tackles'), cbi: r9('cbi'), rec: r9('recoveries') };
   }
   const per90 = (p, x, mk) => { const c = cum[p.id], w = c.minutes / (c.minutes + 180); return (c.minutes ? c[x] / c.minutes * 90 : 0) * w + pm[p.pos][mk] * (1 - w); };
-  const posPts = {}; { const acc = {}; for(const p of players){ for(const x of logs[p.id]) if(x.min >= 45){ const a = (acc[p.pos] ||= { t: 0, n: 0 }); a.t += x.pts; a.n++; } } for(const k2 in acc) posPts[k2] = acc[k2].t / acc[k2].n; }
+  const posPts = posFormMean(p => logs[p.id]);
+  const XI = cfg.lineup ? evalProj[k] : null, xiTeams = new Set();
+  if(XI) for(const p of players) if(XI[p.id] != null) xiTeams.add(p.teamId);
   // Teamstärken (xG für/gegen) bis vor dem Spieltag
   const tm = {}; for(const id in teams) tm[id] = { xg: 0, xgc: 0, games: 0 };
   for(const f of allFixtures) if(f.finished && gset.has(f.event)){ if(tm[f.team_h]) tm[f.team_h].games++; if(tm[f.team_a]) tm[f.team_a].games++; }
@@ -2720,17 +2769,16 @@ function backtestGw(k, cfg = BT_DEFAULT){
   }
   for(const p of players){
     const fx = fxK.filter(f => f.team_h === p.teamId || f.team_a === p.teamId); if(!fx.length) continue;
-    const L = logs[p.id].slice(-10), L5 = L.slice(-5), L3 = L.slice(-3);
+    const L = logs[p.id].slice(-10);
     let pStart = 0, pSub = 0, mStart = 85, mSub = 20;
     if(L.length){
-      const rate = (A, f) => A.filter(f).length / A.length;
-      const mix = f => cfg.recency === 'L3' ? 0.5 * rate(L3, f) + 0.3 * rate(L5, f) + 0.2 * rate(L, f) : 0.6 * rate(L5, f) + 0.4 * rate(L, f);
-      pStart = mix(x => x.start);
-      const app = mix(x => x.min > 0);
+      pStart = rateMix(L, x => x.start, cfg);
+      const app = rateMix(L, x => x.min > 0, cfg);
       pSub = Math.max(0, app - pStart);
       const sm = L.filter(x => x.start); if(sm.length) mStart = Math.min(90, sm.reduce((t,x) => t + x.min, 0) / sm.length);
       const sb = L.filter(x => x.min > 0 && !x.start); if(sb.length) mSub = sb.reduce((t,x) => t + x.min, 0) / sb.length;
     }
+    if(XI && xiTeams.has(p.teamId)){ if(XI[p.id] != null){ pStart = 1; pSub = 0; } else { pStart = 0; pSub = subRate(L); } }
     const xMin = pStart * mStart + pSub * mSub;
     let xg90 = per90(p, 'xg', 'xg'), xa90 = per90(p, 'xa', 'xa');
     if(p.penOrder === 1) xg90 += 0.06; if(p.fkOrder === 1) xg90 += 0.02; if(p.cornerOrder === 1) xa90 += 0.04;
@@ -2739,9 +2787,8 @@ function backtestGw(k, cfg = BT_DEFAULT){
     const def90 = per90(p, 'tackles', 'tackles') * (s.tackle + LR.tk) + per90(p, 'cbi', 'cbi') * (s.cbi + LR.cbi) + per90(p, 'recoveries', 'rec') * (s.recovery + LR.rec) + LR.min;
     const sPos = (sleeper.scorePos || {})[p.id] || p.pos;
     const G = s['goal_'+sPos] || 0, CS = s['cs_'+sPos] || 0, GC = s['gc_'+sPos] || 0, A = s['assist_'+sPos] || 0;
-    const apps = L.filter(x => x.min > 0).slice(-cfg.formN), nA = apps.length;
-    const l10raw = nA ? apps.reduce((t,x) => t + x.pts, 0) / nA : 0;
-    const l10 = cfg.formShrink > 0 ? (nA * l10raw + cfg.formShrink * (posPts[p.pos] || 0)) / (nA + cfg.formShrink) : l10raw;
+    const apps = L.filter(x => x.min > 0).slice(-cfg.formN);
+    const l10 = shrinkForm(apps, posPts[p.pos], cfg);
     const mpa = apps.length ? apps.reduce((t,x) => t + x.min, 0) / apps.length : 0;
     const formPart = l10 * Math.min(1, xMin / Math.max(30, mpa || 90));
     let pred = 0;
@@ -2755,7 +2802,7 @@ function backtestGw(k, cfg = BT_DEFAULT){
       pred += cfg.wModel * model + (1 - cfg.wModel) * formPart;
     }
     const r = (real[p.id] || {})[k], st = (histById[p.id] || {})[k];
-    const o = { pred: Math.max(0, pred), actual: r ? r.pts : 0, min: r ? r.min : (st ? num(st.minutes) : 0), tid: p.teamId };
+    const o = { pred: Math.max(0, pred), actual: r ? r.pts : 0, min: r ? r.min : (st ? num(st.minutes) : 0), tid: p.teamId, xMin, pS: pStart, n: fx.length };
     // Bekannter Ausfall: kein Einsatz UND vorher absehbar (schon im letzten Spiel gefehlt oder Verletzung/Sperre vor dem Anpfiff gemeldet)
     if(o.min === 0){
       const last = logs[p.id][logs[p.id].length - 1];
@@ -2770,62 +2817,85 @@ function backtestGw(k, cfg = BT_DEFAULT){
   }
   return (evalCache[key] = { k, players: out, clubs });
 }
+// Sleeper-Prognosen der Auswertungs-Spieltage plus 4 Wochen davor (für die Kalibrierung wie live)
+const evalProjWeeks = gws => { const w = new Set(); for(const g of gws) for(let x = Math.max(1, g - 4); x <= g; x++) w.add(x); return [...w]; };
 async function loadEvalExtras(gws){
   if(evalLoading) return; evalLoading = true;
   try {
     const season = sleeper.season || new Date().getFullYear();
-    await Promise.all(gws.map(async g => {
+    await Promise.all([...evalProjWeeks(gws).map(async g => {
       if(!evalProj[g] && sleeper.matchPid && sleeper.scoringSettings){
         try { const arr = await getJSON(`/api/sl/projections/clubsoccer:epl/${season}/${g}?season_type=regular`); const m = {};
           for(const e of arr || []){ if(!e || !e.stats) continue; const fid = sleeper.matchPid(String(e.player_id)); if(fid == null) continue; m[fid] = (m[fid] || 0) + leaguePoints(e.stats, sleeper.scoringSettings); }
           evalProj[g] = m; } catch(e){ evalProj[g] = {}; }
       }
+    }), ...gws.map(async g => {
       if(!evalSnaps[g]){ try { const j = await getJSON('/api/ki/predsnap?gw=' + g + '&t=' + Date.now()); evalSnaps[g] = j && j.preds ? j : { none: true }; } catch(e){ evalSnaps[g] = { none: true }; } }
-    }));
+    })]);
   } finally { evalLoading = false; }
 }
+// Sleeper-Kalibrierung wie live: echte / prognostizierte Punkte je Position aus den 3 Spieltagen vor g (Prognose ≥ 2)
+function slCalBefore(g){
+  const acc = {}, real = sleeper.real || {}, byId = evalById();
+  for(let w = g - 3; w < g; w++){ const pj = evalProj[w]; if(!pj) continue;
+    for(const fid in pj){ const v = pj[fid], pl = byId[fid]; if(v < 2 || !pl) continue; const a = (acc[pl.pos] ||= { p: 0, r: 0, n: 0 }); a.p += v; a.r += ((real[fid] || {})[w] || {}).pts || 0; a.n++; } }
+  return Object.fromEntries(Object.entries(acc).filter(([,a]) => a.n >= 15 && a.p > 0).map(([k,a]) => [k, Math.max(0.8, Math.min(2.2, a.r / a.p))]));
+}
+let evalByIdCache = null;
+const evalById = () => (evalByIdCache && evalByIdCache.n === players.length) ? evalByIdCache.m : (evalByIdCache = { n: players.length, m: Object.fromEntries(players.map(p => [p.id, p])) }).m;
 // Prognose kurz vor dem Spieltag speichern (für spätere Auswertung): solange die Runde noch nicht begonnen hat, höchstens alle 30 Min.
+// Gespeichert werden die Prognose (wie angezeigt), unser Modell allein und Sleepers kalibrierte Projektion – so lässt sich der Sleeper-Anteil später sauber einstellen.
 async function savePredSnapshot(){
   try {
     const gw = nextGw, first = (allFixtures || []).filter(f => f.event === gw && f.kickoff_time).map(f => Date.parse(f.kickoff_time)).sort((a,b) => a - b)[0];
     if(!first || first < Date.now() || !sleeper.calibrated) return;
     if(Date.now() - (+(store.get('snapAt_' + gw) || 0)) < 30 * 60e3) return;
-    const preds = {};
-    for(const p of players){ const v = (p.progParts || []).filter(x => x.gw === gw).reduce((t,x) => t + x.pts, 0); if(v >= 0.5) preds[p.id] = Math.round(v * 10) / 10; }
+    const preds = {}, own = {}, sl = {};
+    for(const p of players){
+      const parts = (p.progParts || []).filter(x => x.gw === gw), v = parts.reduce((t,x) => t + x.pts, 0), o = parts.reduce((t,x) => t + (x.own ?? x.pts), 0);
+      if(v >= 0.5 || (p.slp || 0) >= 0.5){ preds[p.id] = Math.round(v * 10) / 10; own[p.id] = Math.round(o * 10) / 10; if(p.slp != null) sl[p.id] = Math.round(p.slp * 10) / 10; }
+    }
     if(Object.keys(preds).length < 50) return;
     store.set('snapAt_' + gw, Date.now());
-    await fetch('/api/ki/predsnap', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gw, preds }) });
+    await fetch('/api/ki/predsnap', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gw, preds, own, sl, model: MODEL }) });
   } catch(e){}
 }
-// Experimente: window.plExperiment([{...cfg}, ...], { who:'liga'|'all', sleeperW, biasCal })
+// Experimente: window.plExperiment([{ ...cfg, sleeperW, slLast, slPrev, biasCal }, ...], { who:'liga'|'all'|'mine' })
+//  cfg: Modell-Parameter (siehe MODEL), lineup:true = bestätigte Startelf bekannt
+//  sleeperW: Sleepers Prognose desselben Spieltags (kennt die offizielle Startelf → nur mit lineup:true fair)
+//  slLast:   Sleepers Prognose der Vorwoche (≈ erwartete Startelf unter der Woche, wie live), slPrev: Sleeper-Rate × unsere Minuten
+//  Grundgesamtheit für alle Varianten gleich: Spieler mit Einsatz oder Prognose ≥ 2 im Live-Modell (ohne bekannte Ausfälle)
 window.plExperiment = async (cfgs, opt = {}) => {
   const gws = evalGws(); await loadEvalExtras(gws);
-  const owned = id => !!sleeper.ownerByFpl[id];
+  const owned = id => !!sleeper.ownerByFpl[id], byId = evalById();
+  const mine = id => sleeper.ownerByFpl[id] === sleeper.me;
   const out = [];
   for(const cfg0 of cfgs){
-    const { sleeperW = 0, biasCal = false, ...cfg } = cfg0;
-    const res = { cfg: cfg0, gw: {} }; let tA = 0, tN = 0, tB = 0;
+    const { sleeperW = 0, slLast = 0, slPrev = 0, biasCal = false, tag, ...cfg } = cfg0;
+    const res = { cfg: cfg0, gw: {} }; let tA = 0, tN = 0, tB = 0, tS = 0, tH = 0;
     for(const g of gws){
-      const bt = backtestGw(g, cfg); if(!bt) continue;
-      // Kalibrierung aus früheren Spieltagen (walk-forward): Sleeper-Faktor je Position, Bias-Faktor je Position
-      const prev = gws.filter(x => x < g && backtestGw(x, cfg));
-      const fac = {}, sfac = {};
-      if(biasCal || sleeperW){ const acc = {};
-        for(const x of prev){ const b = backtestGw(x, cfg), pj = evalProj[x] || {};
-          for(const [fid, o] of Object.entries(b.players)){ if(o.known || !(o.min > 0 || o.pred >= 2)) continue; const pos = (players.find(q => q.id === +fid) || {}).pos; const a = (acc[pos] ||= { p: 0, r: 0, s: 0, sr: 0 }); a.p += o.pred; a.r += o.actual; if(pj[fid] >= 2){ a.s += pj[fid]; a.sr += o.actual; } } }
-        for(const pos in acc){ const a = acc[pos]; fac[pos] = a.p > 0 ? Math.max(0.7, Math.min(1.5, a.r / a.p)) : 1; sfac[pos] = a.s > 0 ? Math.max(0.8, Math.min(2.2, a.sr / a.s)) : 1; } }
-      const pj = evalProj[g] || {}; let A = 0, N = 0, B = 0;
+      const bt = backtestGw(g, cfg), ref = backtestGw(g, {}); if(!bt || !ref) continue;
+      const cal = slCalBefore(g);
+      const fac = {};
+      if(biasCal){ const acc = {};
+        for(const x of gws.filter(x => x < g)){ const b = backtestGw(x, cfg); if(!b) continue;
+          for(const [fid, o] of Object.entries(b.players)){ if(o.known || !(o.min > 0 || o.pred >= 2)) continue; const pos = (byId[fid] || {}).pos; const a = (acc[pos] ||= { p: 0, r: 0 }); a.p += o.pred; a.r += o.actual; } }
+        for(const pos in acc){ const a = acc[pos]; fac[pos] = a.p > 0 ? Math.max(0.7, Math.min(1.5, a.r / a.p)) : 1; } }
+      const pj = evalProj[g] || {}, pjLast = evalProj[g - 1] || {}; let A = 0, N = 0, B = 0, S = 0, H = 0;
       for(const [fid, o] of Object.entries(bt.players)){
-        if(o.known) continue; if(opt.who !== 'all' && !owned(+fid)) continue;
-        const pos = (players.find(q => q.id === +fid) || {}).pos;
+        const r0 = ref.players[fid]; if(!r0 || r0.known || !(r0.min > 0 || r0.pred >= 2)) continue;
+        if(opt.who === 'mine' ? !mine(+fid) : opt.who !== 'all' && !owned(+fid)) continue;
+        const pos = (byId[fid] || {}).pos, c = cal[pos] || 1;
         let pr = o.pred * (biasCal ? (fac[pos] || 1) : 1);
-        if(sleeperW && pj[fid] != null) pr = (1 - sleeperW) * pr + sleeperW * pj[fid] * (sfac[pos] || 1);
-        if(!(o.min > 0 || pr >= 2)) continue;
-        A += Math.abs(o.actual - pr); B += o.actual - pr; N++;
+        if(sleeperW && pj[fid] != null) pr = (1 - sleeperW) * pr + sleeperW * pj[fid] * c;
+        if(slLast && pjLast[fid] != null) pr = (1 - slLast) * pr + slLast * pjLast[fid] * c;
+        if(slPrev){ let rr = null; for(let w = g - 1; w >= g - 4 && rr == null; w--){ const v = (evalProj[w] || {})[fid]; if(v != null) rr = v; }
+          if(rr != null) pr = (1 - slPrev) * pr + slPrev * rr * c * Math.min(1, (o.xMin || 0) / 90); }
+        const e = o.actual - pr; A += Math.abs(e); B += e; S += e * e; H += Math.abs(e) <= 3 ? 1 : 0; N++;
       }
-      res.gw[g] = { mae: +(A / N).toFixed(3), bias: +(B / N).toFixed(2), n: N }; tA += A; tB += B; tN += N;
+      res.gw[g] = { mae: +(A / N).toFixed(3), bias: +(B / N).toFixed(2), n: N }; tA += A; tB += B; tS += S; tH += H; tN += N;
     }
-    res.mae = +(tA / tN).toFixed(3); res.bias = +(tB / tN).toFixed(2); res.n = tN; out.push(res);
+    res.mae = +(tA / tN).toFixed(3); res.bias = +(tB / tN).toFixed(2); res.rmse = +Math.sqrt(tS / tN).toFixed(3); res.hit3 = +(tH / tN).toFixed(3); res.n = tN; out.push(res);
   }
   return out;
 };
@@ -2857,7 +2927,7 @@ function evalTeamIds(kind, id){
 }
 async function openEvalTeam(kind, id){
   const D0 = evalData(); if(!D0.shown.length || !sleeper.real){ setStatus('Für die Auswertung braucht es die echten Sleeper-Punkte – lade zuerst die Liga.', true); return; }
-  if(D0.shown.some(g => !evalProj[g] || !evalSnaps[g])) await loadEvalExtras(D0.shown);
+  if(evalProjWeeks(D0.shown).some(w => !evalProj[w]) || D0.shown.some(g => !evalSnaps[g])) await loadEvalExtras(D0.shown);
   const D = evalData();
   const sel = evalState.gw === 'sum' ? D.shown : [+evalState.gw].filter(g => D.per[g]);
   if(!sel.length) return;
@@ -2906,7 +2976,7 @@ function renderEval(){
   const el = $('evalBody'); if(!el || $('viewCoach').hidden) return;
   const gws = evalGws();
   if(!gws.length || !sleeper.real){ el.className = 'empty'; el.innerHTML = 'Die Auswertung braucht die echten Sleeper-Punkte – lade oben deine Liga.'; return; }
-  if(gws.some(g => !evalProj[g] || !evalSnaps[g])){ if(!evalLoading) loadEvalExtras(gws).then(renderEval); }
+  if(evalProjWeeks(gws).some(w => !evalProj[w]) || gws.some(g => !evalSnaps[g])){ if(!evalLoading) loadEvalExtras(gws).then(renderEval); }
   el.className = '';
   const owned = id => ownerOf({ id }), mineSet = new Set(players.filter(p => ownerOf(p) === sleeper.me).map(p => p.id));
   const { per, shown } = evalData();
@@ -2932,7 +3002,7 @@ function renderEval(){
     + shown.slice().reverse().map(g => { const st = stats(per[g].rows.filter(inPop)); if(!st.n) return '';
       const better = st.maeO != null && st.maeS != null ? (st.maeO <= st.maeS ? 'evp' : 'evn') : '';
       return `<tr><td class="l">GW ${g}<div class="sub">${per[g].src}${(() => { const n = [...per[g].known].filter(([id, pr]) => pr >= 2 && inPop({ id, min: 0, pred: pr })).length; return n ? ` · ${n} Ausfälle nicht gezählt` : ''; })()}</div></td><td><b>${fmt(st.mae,1)}</b></td><td class="${better}" title="${st.maeO != null ? 'gleiche Spieler, unsere Prognose: ' + fmt(st.maeO,1) : ''}">${st.maeS != null ? fmt(st.maeS,1) : '–'}</td><td class="${devCls(st.bias * 3)}">${sgn(st.bias)}</td><td>${Math.round(st.hit * 100)} %</td><td class="desk">${st.n}</td></tr>`; }).join('')
-    + `</tbody></table></div><div class="nodata">Spieler ohne Einsatz, deren Ausfall vorher bekannt war (Verletzung/Sperre gemeldet oder schon im Spiel davor gefehlt), zählen nicht. Ø Abweichung = durchschnittlicher Unterschied pro Spieler und Spiel in Punkten (kleiner ist besser). Sleeper grün = unsere Prognose war bei denselben Spielern genauer als Sleepers eigene, rot = Sleeper war genauer. Tendenz positiv = Spieler holten mehr als erwartet.</div></div>`;
+    + `</tbody></table></div><div class="nodata">Spieler ohne Einsatz, deren Ausfall vorher bekannt war (Verletzung/Sperre gemeldet oder schon im Spiel davor gefehlt), zählen nicht. Ø Abweichung = durchschnittlicher Unterschied pro Spieler und Spiel in Punkten (kleiner ist besser). Sleeper grün = unsere Prognose war bei denselben Spielern genauer als Sleepers eigene, rot = Sleeper war genauer. Achtung: Sleeper überschreibt seine Prognose kurz vor dem Anpfiff mit der offiziellen Startelf (nur die 11 Starter haben eine) – im Vergleich hat Sleeper also schon gewusst, wer spielt. Tendenz positiv = Spieler holten mehr als erwartet.</div></div>`;
   // Spieler
   const agg = {};
   for(const g of sel) for(const r of per[g].rows){ if(!inPop(r)) continue; if(!(r.min > 0 || r.pred >= 2) && evalState.who === 'all') continue;
@@ -2965,7 +3035,7 @@ function renderEval(){
     + clubs.map(c => { const d = c.actual - c.pred, dg = c.goals - c.lam;
       return `<tr data-evrow-club="${c.tid}" style="cursor:pointer"><td class="l">${esc(teams[c.tid]?.name || '')} <span class="nodata">›</span></td><td>${fmt(c.lam,1)}</td><td class="${devCls(dg * 2)}">${c.goals}</td><td>${fmt(c.pred,1)}</td><td><b>${fmt(c.actual,1)}</b></td><td class="${devCls(d / (4 * sel.length))}">${sgn(d)}</td></tr>`; }).join('')
     + `</tbody></table></div></div>`;
-  h += `<div class="nodata" style="margin-top:8px">«Rückrechnung» = unser Modell mit dem Wissensstand vor dem Spieltag (ohne damalige News und Quoten). Ab GW ${nextGw} speichert die Seite die echte Prognose kurz vor dem Anpfiff («gespeichert»).</div>`;
+  h += `<div class="nodata" style="margin-top:8px">«Rückrechnung» = unser heutiges Modell mit dem Wissensstand vor dem Spieltag (ohne damalige News, Quoten und Sleeper-Anteil). «gespeichert» = die echte Prognose der Seite kurz vor dem ersten Anpfiff der Runde.</div>`;
   el.innerHTML = h;
   el.querySelectorAll('[data-evgw]').forEach(b => b.onclick = () => { evalState.gw = b.dataset.evgw; evalState.all = false; renderEval(); });
   el.querySelectorAll('[data-evwho]').forEach(b => b.onclick = () => { evalState.who = b.dataset.evwho; store.set('evWho', evalState.who); evalState.all = false; renderEval(); });

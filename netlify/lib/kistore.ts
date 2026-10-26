@@ -102,13 +102,25 @@ export async function saveMatchAi(gw: number, d: any) {
 export async function loadPredSnap(gw: number): Promise<any> {
   return (await store().get(`pred-${gw}`, { type: "json" }).catch(() => null)) || null;
 }
-export async function savePredSnap(gw: number, preds: unknown) {
-  const out: Record<string, number> = {}; let n = 0;
-  for (const [k, v] of Object.entries(preds && typeof preds === "object" ? (preds as Record<string, unknown>) : {})) {
-    const id = Number(k), x = Number(v);
-    if (Number.isInteger(id) && id > 0 && id < 5000 && x >= 0 && x <= 60 && n < 1200) { out[id] = Math.round(x * 10) / 10; n++; }
+export async function savePredSnap(gw: number, preds: unknown, extra: { own?: unknown; sl?: unknown; model?: unknown } = {}) {
+  // Werte je FPL-Spieler-ID prüfen und runden (0–60 Punkte, höchstens 1200 Spieler)
+  const clean = (m: unknown) => { const out: Record<string, number> = {}; let n = 0;
+    for (const [k, v] of Object.entries(m && typeof m === "object" ? (m as Record<string, unknown>) : {})) {
+      const id = Number(k), x = Number(v);
+      if (Number.isInteger(id) && id > 0 && id < 5000 && x >= 0 && x <= 60 && n < 1200) { out[id] = Math.round(x * 10) / 10; n++; }
+    }
+    return { out, n }; };
+  const p = clean(preds);
+  if (p.n < 50) return { ok: false, n: p.n };
+  const doc: Record<string, unknown> = { gw, ts: Date.now(), preds: p.out };
+  const own = clean(extra.own), sl = clean(extra.sl);
+  if (own.n) doc.own = own.out;
+  if (sl.n) doc.sl = sl.out;
+  if (extra.model && typeof extra.model === "object") {
+    const m: Record<string, number | string> = {};
+    for (const [k, v] of Object.entries(extra.model as Record<string, unknown>).slice(0, 12)) if (/^[a-zA-Z]{1,16}$/.test(k) && (typeof v === "number" || (typeof v === "string" && v.length <= 8))) m[k] = v as number | string;
+    doc.model = m;
   }
-  if (n < 50) return { ok: false, n };
-  await store().setJSON(`pred-${gw}`, { gw, ts: Date.now(), preds: out });
-  return { ok: true, n };
+  await store().setJSON(`pred-${gw}`, doc);
+  return { ok: true, n: p.n };
 }

@@ -10,7 +10,8 @@ export default async (req: Request) => {
   const isStats = isNews || /^(stats|projections)\//.test(rest);
   const qs = [...u.searchParams].filter(([k]) => ["season_type", "lookback_hours", "limit"].includes(k)).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
   const target = (isStats ? "https://api.sleeper.com/" : "https://api.sleeper.app/v1/") + rest + (qs ? "?" + qs : "");
-  const ttl = isNews ? 600 : isStats ? (rest.startsWith("projections") ? 900 : 300) : 60;
+  // Prognosen nur 5 Min.: Sleeper schreibt kurz vor Anpfiff die offizielle Startelf hinein (wichtig für Late-Swaps)
+  const ttl = isNews ? 600 : isStats ? 300 : 60;
   const key = (rest + "_" + qs).replace(/[^a-z0-9]/gi, "_");
   const store = getStore({ name: "sleeper-cache" });
   const out = (body: string, src: string, cdn: string) => new Response(body, {
