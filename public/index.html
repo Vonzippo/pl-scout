@@ -519,7 +519,7 @@ body.noscroll{overflow:hidden}
   <div class="kibar"><span id="kiStatus">🤖 KI-Bot: lädt …</span><button class="ghost" id="kiRun" title="Bewertet die fälligen Spieler sofort (sonst automatisch alle 10 Minuten)">Jetzt bewerten</button></div>
   <div class="legend">Score (Spielerqualität): <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine · Namensfarbe = Position: <b class="p-GKP">TW</b> <b class="p-DEF">VER</b> <b class="p-MID">MIT</b> <b class="p-FWD">STU</b></div>
   </details>
-  <div class="evseg tablemode" id="tableMode"><button data-tm="std">Übersicht</button><button data-tm="gw">📈 <span class="desk">Punkte pro</span><span class="mobi">Pro</span> Spieltag</button><button data-tm="ph">👻 Phantom-Punkte</button></div>
+  <div class="evseg tablemode" id="tableMode"><button data-tm="std">Übersicht</button><button data-tm="gw">📈 Punkte<span class="desk"> pro Spieltag</span></button><button data-tm="ph">👻 Phantom-Punkte</button></div>
   <div class="tablewrap">
     <table>
       <thead><tr id="thead"></tr></thead>
@@ -1881,7 +1881,9 @@ function renderTable(){
     const cls = [state.selected.has(p.id)?'hl':'', (o && o===sleeper.me)?'mine':''].join(' ');
     return `<tr class="${cls}" data-pid="${p.id}">${cols.map(c => `<td class="${c.l?'l':''} ${c.cls||''}">${c.cell(p)}</td>`).join('')}</tr>`;
   }).join('');
-  $('count').innerHTML = state.tm === 'ph'
+  $('count').innerHTML = state.tm === 'gw'
+    ? `${rows.length} Spieler · <b>📈 Zahlen = echte Punkte</b>, die der Spieler im jeweiligen Spieltag geholt hat (eure Liga-Wertung, exakt aus den Sleeper-Stats) · 0' = nicht eingesetzt · – = spielfrei · Σ = Summe der gezeigten Spieltage · Ø/Spiel = pro Einsatz · Farbe: ab 4 / 8 / 12 Punkten heller · Maus über eine Zahl = Gegner, Resultat, Minuten und unsere Prognose dafür · Doppeltipp = Spielerprofil`
+    : state.tm === 'ph'
     ? `${rows.length} Spieler · <b>👻 Phantom-Punkte</b> = alle Punkte ausser Toren, Assists, Zu-Null, Gegentoren, Karten und Penaltys – die Punkte, die man nicht auf dem Schirm hat. Eure Liga-Regeln: ${esc(phRules()) || '–'}. Ø = pro Einsatz in dieser Saison (exakt aus den Sleeper-Stats), Ø Klar = die sichtbaren Punkte, Ø Total = beides. Viele Phantom-Punkte = sicherer Boden, der Spieler punktet auch ohne Tor. 👻 neben dem Namen (überall auf der Seite) = mehr als ${fmt(PH_GHOST, 1)} Phantom-Punkte pro Einsatz (ab 3 Einsätzen). Maus über eine Zahl bzw. Doppeltipp = Herkunft im Detail.`
     : `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · <b>Doppeltipp = Spielerprofil</b> · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele (40/30/20/10 %)`;
   renderCmpPill();
