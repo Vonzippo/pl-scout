@@ -2670,8 +2670,11 @@ const evalState = { gw: 'sum', who: store.get('evWho') || 'liga', all: false };
 const evalCache = {}, evalProj = {}, evalSnaps = {};
 let evalLoading = false;
 const evalGws = () => ((histById && histById.__gws) || []).filter(g => g < nextGw && (sleeper.realWeeks || []).includes(g)).slice(-5);
-function backtestGw(k){
-  const key = k + '_' + (scoring.lr ? 'c' : 'b');
+// Modell-Parameter (Standard = Live-Modell); für Experimente austauschbar
+const BT_DEFAULT = { wModel: 0.65, formN: 10, formShrink: 0, recency: 'L5', home: 0.1, opp: 1 };
+function backtestGw(k, cfg = BT_DEFAULT){
+  cfg = { ...BT_DEFAULT, ...cfg };
+  const key = k + '_' + (scoring.lr ? 'c' : 'b') + '_' + JSON.stringify(cfg);
   if(evalCache[key]) return evalCache[key];
   if(!histById) return null;
   const gws = histById.__gws.filter(g => g < k);
@@ -2697,6 +2700,7 @@ function backtestGw(k){
     pm[pos] = { xg: r9('xg'), xa: r9('xa'), saves: r9('saves'), yellow: r9('yellow'), tackles: r9('tackles'), cbi: r9('cbi'), rec: r9('recoveries') };
   }
   const per90 = (p, x, mk) => { const c = cum[p.id], w = c.minutes / (c.minutes + 180); return (c.minutes ? c[x] / c.minutes * 90 : 0) * w + pm[p.pos][mk] * (1 - w); };
+  const posPts = {}; { const acc = {}; for(const p of players){ for(const x of logs[p.id]) if(x.min >= 45){ const a = (acc[p.pos] ||= { t: 0, n: 0 }); a.t += x.pts; a.n++; } } for(const k2 in acc) posPts[k2] = acc[k2].t / acc[k2].n; }
   // Teamstärken (xG für/gegen) bis vor dem Spieltag
   const tm = {}; for(const id in teams) tm[id] = { xg: 0, xgc: 0, games: 0 };
   for(const f of allFixtures) if(f.finished && gset.has(f.event)){ if(tm[f.team_h]) tm[f.team_h].games++; if(tm[f.team_a]) tm[f.team_a].games++; }
@@ -2710,17 +2714,19 @@ function backtestGw(k){
     for(const [tid, opp, home] of [[f.team_h, f.team_a, true], [f.team_a, f.team_h, false]]){
       const T = tm[tid], O = tm[opp]; if(!T || !O) continue;
       const c = (clubs[tid] ||= { tid, lam: 0, goals: 0, conceded: 0, pred: 0, actual: 0, games: 0 });
-      c.lam += T.att * O.def / avg * (home ? 1.1 : 0.9); c.games++;
+      c.lam += T.att * O.def / avg * (home ? 1 + cfg.home : 1 - cfg.home); c.games++;
       if(f.team_h_score != null){ c.goals += home ? f.team_h_score : f.team_a_score; c.conceded += home ? f.team_a_score : f.team_h_score; }
     }
   }
   for(const p of players){
     const fx = fxK.filter(f => f.team_h === p.teamId || f.team_a === p.teamId); if(!fx.length) continue;
-    const L = logs[p.id].slice(-10), L5 = L.slice(-5);
+    const L = logs[p.id].slice(-10), L5 = L.slice(-5), L3 = L.slice(-3);
     let pStart = 0, pSub = 0, mStart = 85, mSub = 20;
     if(L.length){
-      pStart = 0.6 * (L5.filter(x => x.start).length / L5.length) + 0.4 * (L.filter(x => x.start).length / L.length);
-      const app = 0.6 * (L5.filter(x => x.min > 0).length / L5.length) + 0.4 * (L.filter(x => x.min > 0).length / L.length);
+      const rate = (A, f) => A.filter(f).length / A.length;
+      const mix = f => cfg.recency === 'L3' ? 0.5 * rate(L3, f) + 0.3 * rate(L5, f) + 0.2 * rate(L, f) : 0.6 * rate(L5, f) + 0.4 * rate(L, f);
+      pStart = mix(x => x.start);
+      const app = mix(x => x.min > 0);
       pSub = Math.max(0, app - pStart);
       const sm = L.filter(x => x.start); if(sm.length) mStart = Math.min(90, sm.reduce((t,x) => t + x.min, 0) / sm.length);
       const sb = L.filter(x => x.min > 0 && !x.start); if(sb.length) mSub = sb.reduce((t,x) => t + x.min, 0) / sb.length;
@@ -2733,16 +2739,20 @@ function backtestGw(k){
     const def90 = per90(p, 'tackles', 'tackles') * (s.tackle + LR.tk) + per90(p, 'cbi', 'cbi') * (s.cbi + LR.cbi) + per90(p, 'recoveries', 'rec') * (s.recovery + LR.rec) + LR.min;
     const sPos = (sleeper.scorePos || {})[p.id] || p.pos;
     const G = s['goal_'+sPos] || 0, CS = s['cs_'+sPos] || 0, GC = s['gc_'+sPos] || 0, A = s['assist_'+sPos] || 0;
-    const apps = L.filter(x => x.min > 0), l10 = apps.length ? apps.reduce((t,x) => t + x.pts, 0) / apps.length : 0;
+    const apps = L.filter(x => x.min > 0).slice(-cfg.formN), nA = apps.length;
+    const l10raw = nA ? apps.reduce((t,x) => t + x.pts, 0) / nA : 0;
+    const l10 = cfg.formShrink > 0 ? (nA * l10raw + cfg.formShrink * (posPts[p.pos] || 0)) / (nA + cfg.formShrink) : l10raw;
     const mpa = apps.length ? apps.reduce((t,x) => t + x.min, 0) / apps.length : 0;
     const formPart = l10 * Math.min(1, xMin / Math.max(30, mpa || 90));
     let pred = 0;
     for(const f of fx){
       const home = f.team_h === p.teamId, T = tm[p.teamId], O = tm[home ? f.team_a : f.team_h]; if(!T || !O) continue;
-      const lf = T.att * O.def / avg * (home ? 1.1 : 0.9), la = O.att * T.def / avg * (home ? 0.9 : 1.1), e90 = xMin / 90;
+      let lf = T.att * O.def / avg * (home ? 1 + cfg.home : 1 - cfg.home), la = O.att * T.def / avg * (home ? 1 - cfg.home : 1 + cfg.home);
+      lf = T.att + cfg.opp * (lf - T.att); la = T.def + cfg.opp * (la - T.def);
+      const e90 = xMin / 90;
       const model = pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC;
-      pred += 0.65 * model + 0.35 * formPart;
+      pred += cfg.wModel * model + (1 - cfg.wModel) * formPart;
     }
     const r = (real[p.id] || {})[k], st = (histById[p.id] || {})[k];
     const o = { pred: Math.max(0, pred), actual: r ? r.pts : 0, min: r ? r.min : (st ? num(st.minutes) : 0), tid: p.teamId };
@@ -2787,6 +2797,38 @@ async function savePredSnapshot(){
     await fetch('/api/ki/predsnap', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gw, preds }) });
   } catch(e){}
 }
+// Experimente: window.plExperiment([{...cfg}, ...], { who:'liga'|'all', sleeperW, biasCal })
+window.plExperiment = async (cfgs, opt = {}) => {
+  const gws = evalGws(); await loadEvalExtras(gws);
+  const owned = id => !!sleeper.ownerByFpl[id];
+  const out = [];
+  for(const cfg0 of cfgs){
+    const { sleeperW = 0, biasCal = false, ...cfg } = cfg0;
+    const res = { cfg: cfg0, gw: {} }; let tA = 0, tN = 0, tB = 0;
+    for(const g of gws){
+      const bt = backtestGw(g, cfg); if(!bt) continue;
+      // Kalibrierung aus früheren Spieltagen (walk-forward): Sleeper-Faktor je Position, Bias-Faktor je Position
+      const prev = gws.filter(x => x < g && backtestGw(x, cfg));
+      const fac = {}, sfac = {};
+      if(biasCal || sleeperW){ const acc = {};
+        for(const x of prev){ const b = backtestGw(x, cfg), pj = evalProj[x] || {};
+          for(const [fid, o] of Object.entries(b.players)){ if(o.known || !(o.min > 0 || o.pred >= 2)) continue; const pos = (players.find(q => q.id === +fid) || {}).pos; const a = (acc[pos] ||= { p: 0, r: 0, s: 0, sr: 0 }); a.p += o.pred; a.r += o.actual; if(pj[fid] >= 2){ a.s += pj[fid]; a.sr += o.actual; } } }
+        for(const pos in acc){ const a = acc[pos]; fac[pos] = a.p > 0 ? Math.max(0.7, Math.min(1.5, a.r / a.p)) : 1; sfac[pos] = a.s > 0 ? Math.max(0.8, Math.min(2.2, a.sr / a.s)) : 1; } }
+      const pj = evalProj[g] || {}; let A = 0, N = 0, B = 0;
+      for(const [fid, o] of Object.entries(bt.players)){
+        if(o.known) continue; if(opt.who !== 'all' && !owned(+fid)) continue;
+        const pos = (players.find(q => q.id === +fid) || {}).pos;
+        let pr = o.pred * (biasCal ? (fac[pos] || 1) : 1);
+        if(sleeperW && pj[fid] != null) pr = (1 - sleeperW) * pr + sleeperW * pj[fid] * (sfac[pos] || 1);
+        if(!(o.min > 0 || pr >= 2)) continue;
+        A += Math.abs(o.actual - pr); B += o.actual - pr; N++;
+      }
+      res.gw[g] = { mae: +(A / N).toFixed(3), bias: +(B / N).toFixed(2), n: N }; tA += A; tB += B; tN += N;
+    }
+    res.mae = +(tA / tN).toFixed(3); res.bias = +(tB / tN).toFixed(2); res.n = tN; out.push(res);
+  }
+  return out;
+};
 // Pro Spieltag: Prognose (gespeichert oder rückgerechnet), Sleeper-Prognose, echte Punkte
 function evalData(){
   const gws = evalGws(), per = {};
