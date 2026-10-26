@@ -678,7 +678,7 @@ function matchSetup(p, f){
   let lamAg = O.att * T.def / avg * (f.home ? 0.9 : 1.1);
   // Matchup aus den Wettquoten: erwartete Tore beider Teams fliessen zu 75 % ein (Markt weiss mehr über Ausfälle und Form)
   const od = typeof oddsForTeams === 'function' ? oddsForTeams(f.home ? p.teamId : f.opp, f.home ? f.opp : p.teamId, f.ko) : null;
-  if(od){ const mf = f.home ? od.xg.h : od.xg.a, ma = f.home ? od.xg.a : od.xg.h; lamFor = 0.75 * mf + 0.25 * lamFor; lamAg = 0.75 * ma + 0.25 * lamAg; }
+  if(od){ const w = MODEL.odds, mf = f.home ? od.xg.h : od.xg.a, ma = f.home ? od.xg.a : od.xg.h; lamFor = w * mf + (1 - w) * lamFor; lamAg = w * ma + (1 - w) * lamAg; }
   return { lamFor, lamAg, k: lamFor / T.att, kAg: lamAg / T.def, odds: !!od };
 }
 // Prognose-Parameter – per Rückrechnung GW 4–8 bestimmt (Okt. 2026), gelten für Live-Prognose UND Auswertung:
@@ -686,7 +686,8 @@ function matchSetup(p, f){
 //  recency L3: Einsatz-/Startelf-Chance 50 % letzte 3, 30 % letzte 5, 20 % letzte 10 Spiele (vorher 60 % L5 / 40 % L10)
 //  wModel: pro Spiel 80 % Modell (Minuten × Raten × Gegner) und 20 % Form (vorher 65/35)
 //  sleeperW: Anteil der kalibrierten Sleeper-Projektion am nächsten Spieltag; sleeperWxi: wenn die Startelf offiziell ist
-const MODEL = { wModel: 0.8, formN: 10, formShrink: 6, recency: 'L3', home: 0.1, opp: 1, sleeperW: 0.35, sleeperWxi: 0.5 };
+//  odds: Anteil der Wettquoten an den erwarteten Toren beider Teams (sobald Quoten verfügbar sind)
+const MODEL = { wModel: 0.8, formN: 10, formShrink: 6, recency: 'L3', home: 0.1, opp: 1, sleeperW: 0.35, sleeperWxi: 0.5, odds: 0.75 };
 const rateMix = (L, f, cfg = MODEL) => { const r = A => A.length ? A.filter(f).length / A.length : 0;
   return cfg.recency === 'L3' ? 0.5 * r(L.slice(-3)) + 0.3 * r(L.slice(-5)) + 0.2 * r(L) : 0.6 * r(L.slice(-5)) + 0.4 * r(L); };
 const shrinkForm = (apps, posMean, cfg = MODEL) => { const n = apps.length, raw = n ? apps.reduce((t,x) => t + x.pts, 0) / n : 0;
@@ -2722,7 +2723,8 @@ const evalGws = () => ((histById && histById.__gws) || []).filter(g => g < nextG
 // lineup: true = mit bestätigter Startelf rechnen (Sleepers letzte Prognose vor Anpfiff = die 11 Starter jedes Klubs)
 function backtestGw(k, cfg = MODEL){
   cfg = { ...MODEL, ...cfg };
-  const key = k + '_' + (scoring.lr ? 'c' : 'b') + '_' + JSON.stringify(cfg);
+  const useOdds = cfg.odds > 0 && !!oddsHistIdx;
+  const key = k + '_' + (scoring.lr ? 'c' : 'b') + (useOdds ? '_q' : '') + '_' + JSON.stringify(cfg);
   if(evalCache[key]) return evalCache[key];
   if(!histById) return null;
   const gws = histById.__gws.filter(g => g < k);
@@ -2764,7 +2766,9 @@ function backtestGw(k, cfg = MODEL){
     for(const [tid, opp, home] of [[f.team_h, f.team_a, true], [f.team_a, f.team_h, false]]){
       const T = tm[tid], O = tm[opp]; if(!T || !O) continue;
       const c = (clubs[tid] ||= { tid, lam: 0, goals: 0, conceded: 0, pred: 0, actual: 0, games: 0 });
-      c.lam += T.att * O.def / avg * (home ? 1 + cfg.home : 1 - cfg.home); c.games++;
+      let lam = T.att * O.def / avg * (home ? 1 + cfg.home : 1 - cfg.home);
+      const od = useOdds ? oddsHistFor(f) : null; if(od) lam = cfg.odds * (home ? od.xg.h : od.xg.a) + (1 - cfg.odds) * lam;
+      c.lam += lam; c.games++;
       if(f.team_h_score != null){ c.goals += home ? f.team_h_score : f.team_a_score; c.conceded += home ? f.team_a_score : f.team_h_score; }
     }
   }
@@ -2798,6 +2802,8 @@ function backtestGw(k, cfg = MODEL){
       const home = f.team_h === p.teamId, T = tm[p.teamId], O = tm[home ? f.team_a : f.team_h]; if(!T || !O) continue;
       let lf = T.att * O.def / avg * (home ? 1 + cfg.home : 1 - cfg.home), la = O.att * T.def / avg * (home ? 1 - cfg.home : 1 + cfg.home);
       lf = T.att + cfg.opp * (lf - T.att); la = T.def + cfg.opp * (la - T.def);
+      const od = useOdds ? oddsHistFor(f) : null; // Quoten wie am Freitag vor dem Spieltag
+      if(od){ lf = cfg.odds * (home ? od.xg.h : od.xg.a) + (1 - cfg.odds) * lf; la = cfg.odds * (home ? od.xg.a : od.xg.h) + (1 - cfg.odds) * la; }
       const e90 = xMin / 90;
       const model = pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC;
@@ -2844,6 +2850,17 @@ function slCalBefore(g){
     for(const fid in pj){ const v = pj[fid], pl = byId[fid]; if(v < 2 || !pl) continue; const a = (acc[pl.pos] ||= { p: 0, r: 0, n: 0 }); a.p += v; a.r += ((real[fid] || {})[w] || {}).pts || 0; a.n++; } }
   return Object.fromEntries(Object.entries(acc).filter(([,a]) => a.n >= 15 && a.p > 0).map(([k,a]) => [k, Math.max(0.8, Math.min(2.2, a.r / a.p))]));
 }
+// Historische Quoten der Saison (Stand vor dem Spiel) – damit rechnet die Auswertung die Matchups wie live
+let oddsHistIdx = null, oddsHistInfo = null;
+async function loadOddsHist(){
+  if(oddsHistIdx) return;
+  let j; try { j = await getJSON('/api/odds?hist=1'); } catch(e){ return; }
+  if(!j || !j.rows || !j.rows.length) return;
+  const byKey = {}; for(const id in teams) byKey[teamKey(teams[id].name)] = +id;
+  const idx = {}; for(const r of j.rows){ const h = byKey[r.hk], a = byKey[r.ak]; if(h && a) (idx[h + '-' + a] ||= []).push(r); }
+  oddsHistIdx = idx; oddsHistInfo = { n: j.rows.length, season: j.season };
+}
+const oddsHistFor = f => { const rs = oddsHistIdx && oddsHistIdx[f.team_h + '-' + f.team_a]; if(!rs) return null; const ko = Date.parse(f.kickoff_time); return rs.find(r => !r.ko || !isFinite(ko) || Math.abs(r.ko - ko) < 36 * 3600e3) || null; };
 let evalByIdCache = null;
 const evalById = () => (evalByIdCache && evalByIdCache.n === players.length) ? evalByIdCache.m : (evalByIdCache = { n: players.length, m: Object.fromEntries(players.map(p => [p.id, p])) }).m;
 // Prognose kurz vor dem Spieltag speichern (für spätere Auswertung): solange die Runde noch nicht begonnen hat, höchstens alle 30 Min.
@@ -2869,7 +2886,7 @@ async function savePredSnapshot(){
 //  slLast:   Sleepers Prognose der Vorwoche (≈ erwartete Startelf unter der Woche, wie live), slPrev: Sleeper-Rate × unsere Minuten
 //  Grundgesamtheit für alle Varianten gleich: Spieler mit Einsatz oder Prognose ≥ 2 im Live-Modell (ohne bekannte Ausfälle)
 window.plExperiment = async (cfgs, opt = {}) => {
-  const gws = evalGws(); await loadEvalExtras(gws);
+  const gws = evalGws(); await loadEvalExtras(gws); await loadOddsHist();
   const owned = id => !!sleeper.ownerByFpl[id], byId = evalById();
   const mine = id => sleeper.ownerByFpl[id] === sleeper.me;
   const out = [];
@@ -2877,7 +2894,7 @@ window.plExperiment = async (cfgs, opt = {}) => {
     const { sleeperW = 0, slLast = 0, slPrev = 0, biasCal = false, tag, ...cfg } = cfg0;
     const res = { cfg: cfg0, gw: {} }; let tA = 0, tN = 0, tB = 0, tS = 0, tH = 0; const BK = [0, 2, 4, 6, 8, 99], bk = BK.slice(0, -1).map(() => ({ n: 0, p: 0, a: 0, e: 0 }));
     for(const g of gws){
-      const bt = backtestGw(g, cfg), ref = backtestGw(g, {}); if(!bt || !ref) continue;
+      const bt = backtestGw(g, cfg), ref = backtestGw(g, { odds: 0 }); if(!bt || !ref) continue;
       const cal = slCalBefore(g);
       const fac = {};
       if(biasCal){ const acc = {};

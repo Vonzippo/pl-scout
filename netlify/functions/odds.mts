@@ -2,6 +2,7 @@
 // Quelle 1: The Odds API (nur wenn ODDS_API_KEY gesetzt ist – Gratis-Kontingent 500 Abfragen/Monat, hier max. ~6 pro Tag)
 // Quelle 2: football-data.co.uk/fixtures.csv (gratis, ohne Schlüssel; die Wochenend-Spiele erscheinen meist ab Donnerstag/Freitag)
 //   GET /api/odds  →  { ts, src, remaining, rows: [{ home, away, hk, ak, ko, src, books, odds, best, p, over25, xg }] }
+//   GET /api/odds?hist=1  →  gespielte Saisonspiele mit den Quoten vor dem Spiel (football-data E0.csv) + Resultat – für die Auswertung
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 
@@ -99,8 +100,8 @@ function ukToUtc(date: string, time: string): number | null {
   const bst = (mo > 2 && mo < 9) || (mo === 2 && d >= lastSunday(y, 2)) || (mo === 9 && d < lastSunday(y, 9));
   return Date.UTC(y, mo, d, (hh || 0) - (bst ? 1 : 0), mm || 0);
 }
-async function fromFootballData(): Promise<Row[]> {
-  const r = await fetch("https://www.football-data.co.uk/fixtures.csv", { signal: AbortSignal.timeout(8000), headers: { "user-agent": "Mozilla/5.0 (compatible; PLScout/1.0)" } });
+async function fromFootballData(url = "https://www.football-data.co.uk/fixtures.csv"): Promise<Row[]> {
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "user-agent": "Mozilla/5.0 (compatible; PLScout/1.0)" } });
   if (!r.ok) throw new Error(`football-data ${r.status}`);
   const lines = (await r.text()).replace(/^﻿/, "").split(/\r?\n/).filter(Boolean);
   const head = lines.shift()!.split(",").map((x) => x.trim());
@@ -116,14 +117,35 @@ async function fromFootballData(): Promise<Row[]> {
     const ouPre = [["P", "PS"], ["Avg", "Avg"], ["B365", "B365"]].map(([x]) => x).find((x) => num(x + ">2.5") && num(x + "<2.5"));
     const over = ouPre ? (1 / num(ouPre + ">2.5")) / (1 / num(ouPre + ">2.5") + 1 / num(ouPre + "<2.5")) : null;
     const books = head.filter((k) => /H$/.test(k) && !/^(Max|Avg|HTH|FTH|AH|B365AH|PAH|MaxAH|AvgAH)/.test(k) && num(k) && head.includes(k.slice(0, -1) + "A")).length;
-    rows.push(finish({ home: v("HomeTeam"), away: v("AwayTeam"), hk: teamKey(v("HomeTeam")), ak: teamKey(v("AwayTeam")), ko: ukToUtc(v("Date"), v("Time")),
-      src: `${pick[1]} (football-data.co.uk)`, books, odds: o, best: trio("Max"), p: fair(o), over25: over }));
+    const row: Row & { fthg?: number; ftag?: number } = finish({ home: v("HomeTeam"), away: v("AwayTeam"), hk: teamKey(v("HomeTeam")), ak: teamKey(v("AwayTeam")), ko: ukToUtc(v("Date"), v("Time")),
+      src: `${pick[1]} (football-data.co.uk)`, books, odds: o, best: trio("Max"), p: fair(o), over25: over });
+    if (v("FTHG") !== undefined && v("FTHG") !== "") { row.fthg = Number(v("FTHG")); row.ftag = Number(v("FTAG")); }
+    rows.push(row);
   }
   return rows;
 }
 
+// Saison-Datei: Quoten wie am Freitag vor dem Spieltag (bzw. Dienstag vor Englischen Wochen), dazu das Resultat
+async function history(store: ReturnType<typeof getStore>, force: boolean): Promise<Response> {
+  const cached: any = await store.get("epl-hist-v1", { type: "json" }).catch(() => null);
+  const out = (b: unknown) => new Response(JSON.stringify(b), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=600", "netlify-cdn-cache-control": "public, s-maxage=21600" } });
+  if (cached && Date.now() - cached.ts < 12 * 3600e3 && !force) return out(cached);
+  const now = new Date(), y = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  const code = String(y % 100).padStart(2, "0") + String((y + 1) % 100).padStart(2, "0");
+  try {
+    const rows = await fromFootballData(`https://www.football-data.co.uk/mmz4281/${code}/E0.csv`);
+    const body = { ts: Date.now(), season: code, rows };
+    if (rows.length) await store.setJSON("epl-hist-v1", body).catch(() => {});
+    return out(body);
+  } catch (e) {
+    if (cached) return out({ ...cached, stale: true });
+    return out({ ts: Date.now(), season: code, rows: [], errors: [String((e as Error).message || e)] });
+  }
+}
+
 export default async (req: Request) => {
   const store = getStore({ name: "odds-cache" });
+  if (new URL(req.url).searchParams.has("hist")) return history(store, new URL(req.url).searchParams.has("force"));
   const cached: any = await store.get("epl-v1", { type: "json" }).catch(() => null);
   const key = Netlify.env.get("ODDS_API_KEY") || "";
   const ttl = (key ? 4 : 2) * 3600e3;
