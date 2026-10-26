@@ -1256,6 +1256,20 @@ function phStats(p){
   }
   phCache.set(p.id, r); return r;
 }
+// Phantom-Punkte pro 90 Min. je Spieler aus den Wochen ws: offensiv (Schüsse, Vorlagen, Flanken, Dribblings, Penalty geholt, Ballverluste)
+// und defensiv (Tacklings, Abfangen, Klärungen, Blocks, Kopfball, Torhüter-Aktionen), zum Positionsschnitt geglättet
+const PH_OFF = new Set(['sot', 'kp', 'acnc', 'cos', 'pkd', 'dis']);
+function phRates(ws, prior = 270){
+  const P = sleeper.phantom || {}, R = sleeper.real || {}, acc = new Map(), pos = {};
+  for(const p of players){ let o = 0, d = 0, m = 0;
+    for(const w of ws){ const x = (P[p.id] || {})[w], r = (R[p.id] || {})[w]; if(!x || !r || !(r.min > 0)) continue; m += r.min;
+      for(const [k, [, v]] of Object.entries(x.by)) if(PH_OFF.has(k)) o += v; else d += v; }
+    acc.set(p, { o, d, m }); const a = (pos[p.pos] ||= { o: 0, d: 0, m: 0 }); a.o += o; a.d += d; a.m += m; }
+  const out = new Map();
+  for(const [p, a] of acc){ const q = pos[p.pos], po = q.m ? q.o / q.m : 0, pd = q.m ? q.d / q.m : 0;
+    out.set(p, { off: (a.o + po * prior) / (a.m + prior) * 90, def: (a.d + pd * prior) / (a.m + prior) * 90 }); }
+  return out;
+}
 const phWeek = (p, w) => { const x = ((sleeper.phantom || {})[p.id] || {})[w], r = ((sleeper.real || {})[p.id] || {})[w]; return x && r && r.min > 0 ? x : null; };
 const r2s = x => String(Math.round(x * 100) / 100), sgn2 = x => (x > 0 ? '+' : '') + r2s(x);
 const phWhy = by => Object.entries(by).sort((a, b) => Math.abs(b[1][1]) - Math.abs(a[1][1])).map(([k, [n, v]]) => `${r2s(n)} ${PH_SHORT[k] || k} ${sgn2(v)}`).join(' · ');
@@ -2827,6 +2841,7 @@ function backtestGw(k, cfg = MODEL){
   }
   const per90 = (p, x, mk) => { const c = cum[p.id], w = c.minutes / (c.minutes + 180); return (c.minutes ? c[x] / c.minutes * 90 : 0) * w + pm[p.pos][mk] * (1 - w); };
   const posPts = posFormMean(p => logs[p.id]);
+  const phR = cfg.phModel ? phRates(gws, cfg.phPrior ?? 270) : null;
   const XI = cfg.lineup ? evalProj[k] : null, xiTeams = new Set();
   if(XI) for(const p of players) if(XI[p.id] != null) xiTeams.add(p.teamId);
   // Teamstärken (xG für/gegen) bis vor dem Spieltag
@@ -2881,7 +2896,11 @@ function backtestGw(k, cfg = MODEL){
       const od = useOdds ? oddsHistFor(f) : null; // Quoten wie am Freitag vor dem Spieltag
       if(od){ lf = cfg.odds * (home ? od.xg.h : od.xg.a) + (1 - cfg.odds) * lf; la = cfg.odds * (home ? od.xg.a : od.xg.h) + (1 - cfg.odds) * la; }
       const e90 = xMin / 90;
-      const model = pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
+      const ph = phR && phR.get(p);
+      const model = ph
+        ? pStart * s.start + e90 * (xg90 * (lf / T.att) * G + xa90 * (lf / T.att) * A + yc90 * s.yellow + ph.off * Math.pow(lf / T.att, cfg.phK ?? 1) + ph.def * Math.pow(la / T.def, cfg.phK ?? 1))
+          + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC
+        : pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC;
       const fp = cfg.shrinkTo === 'model' ? (apps.length * formPartRaw + cfg.formShrink * model) / (apps.length + cfg.formShrink) : formPart;
       pred += cfg.wModel * model + (1 - cfg.wModel) * fp;
