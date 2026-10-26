@@ -2830,7 +2830,7 @@ function backtestGw(k, cfg = MODEL){
   if(gws.length < 2) return null;
   const s = scoring, gset = new Set(gws), real = sleeper.real || {};
   const cum = {}, logs = {};
-  const CK = ['minutes','xg','xa','saves','yellow','tackles','cbi','recoveries','xgc'];
+  const CK = ['minutes','xg','xa','saves','yellow','tackles','cbi','recoveries','xgc','goals','assists'];
   for(const p of players){
     const H = histById[p.id] || {}, c = Object.fromEntries(CK.map(x => [x, 0])), L = [];
     for(const g of gws){
@@ -2846,7 +2846,7 @@ function backtestGw(k, cfg = MODEL){
   for(const pos of ['GKP','DEF','MID','FWD']){
     const pool = players.filter(p => p.pos === pos && cum[p.id].minutes >= 270), mins = pool.reduce((t,p) => t + cum[p.id].minutes, 0) || 1;
     const r9 = x => pool.reduce((t,p) => t + cum[p.id][x], 0) / mins * 90;
-    pm[pos] = { xg: r9('xg'), xa: r9('xa'), saves: r9('saves'), yellow: r9('yellow'), tackles: r9('tackles'), cbi: r9('cbi'), rec: r9('recoveries') };
+    pm[pos] = { xg: r9('xg'), xa: r9('xa'), saves: r9('saves'), yellow: r9('yellow'), tackles: r9('tackles'), cbi: r9('cbi'), rec: r9('recoveries'), goals: r9('goals'), assists: r9('assists') };
   }
   const per90 = (p, x, mk) => { const c = cum[p.id], w = c.minutes / (c.minutes + 180); return (c.minutes ? c[x] / c.minutes * 90 : 0) * w + pm[p.pos][mk] * (1 - w); };
   const posPts = posFormMean(p => logs[p.id]);
@@ -2886,7 +2886,9 @@ function backtestGw(k, cfg = MODEL){
     if(XI && xiTeams.has(p.teamId)){ if(XI[p.id] != null){ pStart = 1; pSub = 0; } else { pStart = 0; pSub = subRate(L); } }
     const xMin = pStart * mStart + pSub * mSub;
     let xg90 = per90(p, 'xg', 'xg'), xa90 = per90(p, 'xa', 'xa');
-    if(p.penOrder === 1) xg90 += 0.06; if(p.fkOrder === 1) xg90 += 0.02; if(p.cornerOrder === 1) xa90 += 0.04;
+    const fw = cfg.finW || 0, gF = fw ? (1 - fw) * xg90 + fw * per90(p, 'goals', 'goals') : xg90, aF = fw ? (1 - fw) * xa90 + fw * per90(p, 'assists', 'assists') : xa90;
+    let g90 = gF, a90 = aF;
+    if(p.penOrder === 1){ xg90 += 0.06; g90 += 0.06; } if(p.fkOrder === 1){ xg90 += 0.02; g90 += 0.02; } if(p.cornerOrder === 1){ xa90 += 0.04; a90 += 0.04; }
     const sv90 = p.pos === 'GKP' ? per90(p, 'saves', 'saves') : 0, yc90 = per90(p, 'yellow', 'yellow');
     const LR = (s.lr && s.lr[p.pos]) || { min:0, xg:0, xa:0, tk:0, cbi:0, rec:0 };
     const def90 = per90(p, 'tackles', 'tackles') * (s.tackle + LR.tk) + per90(p, 'cbi', 'cbi') * (s.cbi + LR.cbi) + per90(p, 'recoveries', 'rec') * (s.recovery + LR.rec) + LR.min;
@@ -2906,9 +2908,9 @@ function backtestGw(k, cfg = MODEL){
       if(od){ lf = cfg.odds * (home ? od.xg.h : od.xg.a) + (1 - cfg.odds) * lf; la = cfg.odds * (home ? od.xg.a : od.xg.h) + (1 - cfg.odds) * la; }
       const e90 = xMin / 90;
       const ph = phR && phR.get(p);
-      const mT = pStart * s.start + e90 * (xg90 * (lf / T.att) * (G + LR.xg) + xa90 * (lf / T.att) * (A + LR.xa) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
+      const mT = pStart * s.start + e90 * ((g90 * G + xg90 * LR.xg) * (lf / T.att) + (a90 * A + xa90 * LR.xa) * (lf / T.att) + sv90 * (la / T.def) * s.save + yc90 * s.yellow + def90)
         + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC;
-      const mP = ph ? pStart * s.start + e90 * (xg90 * (lf / T.att) * G + xa90 * (lf / T.att) * A + yc90 * s.yellow + ph.off * Math.pow(lf / T.att, cfg.phK ?? 1) + ph.def * Math.pow(la / T.def, cfg.phK ?? 1))
+      const mP = ph ? pStart * s.start + e90 * (g90 * (lf / T.att) * G + a90 * (lf / T.att) * A + yc90 * s.yellow + ph.off * Math.pow(lf / T.att, cfg.phK ?? 1) + ph.def * Math.pow(la / T.def, cfg.phK ?? 1))
           + pStart * (mStart >= 60 ? 1 : 0) * Math.exp(-la) * CS + e90 * la * GC : mT;
       const b = ph ? (cfg.phBlend ?? 1) : 0, model = (1 - b) * mT + b * mP;
       const fp = cfg.shrinkTo === 'model' ? (apps.length * formPartRaw + cfg.formShrink * model) / (apps.length + cfg.formShrink) : formPart;
