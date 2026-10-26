@@ -1377,7 +1377,8 @@ async function loadFPL(){
 
   allFixtures = fixtures;
   fixturesByTeam = {}; playedGwByTeam = {};
-  finishedGws = ev.filter(e => e.finished).map(e => e.id);
+  // abgeschlossen = offiziell fertig ODER alle Spiele der Runde vorbei (FPL setzt «finished» erst nach der Datenprüfung, oft erst am Montag/Dienstag)
+  finishedGws = ev.filter(e => { const fs = (fixtures || []).filter(f => f.event === e.id); return e.finished || (fs.length && fs.every(f => f.finished || f.finished_provisional)); }).map(e => e.id);
   for(const f of fixtures){
     if(f.event == null) continue;
     if(f.finished){ (playedGwByTeam[f.team_h] ||= {})[f.event] = ((playedGwByTeam[f.team_h]||{})[f.event]||0) + 1; (playedGwByTeam[f.team_a] ||= {})[f.event] = ((playedGwByTeam[f.team_a]||{})[f.event]||0) + 1; continue; }
