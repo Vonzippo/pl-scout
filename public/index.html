@@ -246,8 +246,8 @@ td.muted{color:var(--muted)}
 .evkpi small{color:var(--muted);font-size:10px}
 .evt td b.evp{color:#37e39b}.evt td b.evn{color:#ff8f8f}
 .evbtn{background:none;border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:12px;cursor:pointer;margin-left:4px;color:var(--text);vertical-align:1px}
-.mob,td .sub.mob{display:none}
-@media(max-width:640px){.mob,td .sub.mob{display:block;white-space:normal}.evkpi{grid-template-columns:repeat(3,1fr)}.evkpi div:nth-child(n+4){display:none}}
+.mob,td .sub.mob,.mobi{display:none}
+@media(max-width:640px){.mobi{display:inline}.mob,td .sub.mob{display:block;white-space:normal}.evkpi{grid-template-columns:repeat(3,1fr)}.evkpi div:nth-child(n+4){display:none}}
 .evbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;margin-bottom:10px}
 .evseg{display:flex;flex-wrap:wrap;gap:4px}
 .evseg button{font-size:12px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer}
@@ -269,6 +269,12 @@ td.muted{color:var(--muted)}
 .pchip{position:relative}.pceu,.pcxi{position:absolute;top:-8px;z-index:2;line-height:0}.pceu{right:2px}.pcxi{left:2px}.pceu .eub,.pcxi .xib{margin:0}
 .xib{display:inline-block;font-size:9px;font-weight:800;line-height:14px;padding:0 4px;border-radius:4px;margin-left:4px;vertical-align:1px;white-space:nowrap;cursor:help}
 .xib.s{background:#14532d;color:#bbf7d0}.xib.b{background:#7f1d1d;color:#fecaca}
+td .sub.phs{color:#c4b5fd;white-space:normal}
+.phlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:2px 16px;margin:10px 0;font-size:13px}
+.phlist div{display:flex;gap:8px;align-items:baseline;border-bottom:1px solid var(--line);padding:4px 0;min-width:0}
+.phlist div span:first-child{flex:1;min-width:0}.phlist b{flex:none;min-width:2.6em;text-align:right;font-variant-numeric:tabular-nums}.phlist b.neg{color:var(--bad)}
+.pvgames td.phwhy{font-size:11px;color:var(--muted);white-space:nowrap}
+@media(max-width:640px){.pvgames td.phwhy{white-space:normal;min-width:150px}}
 .tablemode{margin:0 0 8px}
 .gwc{text-align:center!important}
 .gwv{display:inline-block;min-width:24px;padding:1px 4px;border-radius:5px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center}
@@ -511,7 +517,7 @@ body.noscroll{overflow:hidden}
   <div class="kibar"><span id="kiStatus">🤖 KI-Bot: lädt …</span><button class="ghost" id="kiRun" title="Bewertet die fälligen Spieler sofort (sonst automatisch alle 10 Minuten)">Jetzt bewerten</button></div>
   <div class="legend">Score (Spielerqualität): <span class="score elite">80+</span> Top <span class="score strong">65+</span> Stark <span class="score solid">50+</span> Solide <span class="score weak">35+</span> Ersatz <span class="score bad">&lt;35</span> Meiden · Maus über den Score zeigt die Bausteine · Namensfarbe = Position: <b class="p-GKP">TW</b> <b class="p-DEF">VER</b> <b class="p-MID">MIT</b> <b class="p-FWD">STU</b></div>
   </details>
-  <div class="evseg tablemode" id="tableMode"><button data-tm="std">Übersicht</button><button data-tm="gw">📈 Punkte pro Spieltag</button></div>
+  <div class="evseg tablemode" id="tableMode"><button data-tm="std">Übersicht</button><button data-tm="gw">📈 <span class="desk">Punkte pro</span><span class="mobi">Pro</span> Spieltag</button><button data-tm="ph">👻 Phantom-Punkte</button></div>
   <div class="tablewrap">
     <table>
       <thead><tr id="thead"></tr></thead>
@@ -1227,6 +1233,40 @@ function leaguePoints(stats, ss){
   for(const k in stats) if(k.startsWith('pos_') && ss[k] != null) pts += (+stats[k] || 0) * ss[k];
   return Math.round(pts * 100) / 100;
 }
+/* ---------- Phantom-Punkte: die «unsichtbaren» Punkte neben Toren, Assists und Zu-Null ---------- */
+// Alles, was in eurer Liga Punkte gibt, aber in keinem Matchbericht auftaucht (Kopfballduelle, Klärungen, Abfangen, Schüsse aufs Tor …)
+const PH_KEYS = { sot:'Schüsse aufs Tor', kp:'Torschussvorlagen', acnc:'präzise Flanken', cos:'Dribblings', tkw:'Tacklings gewonnen', int:'Abgefangene Bälle',
+  clr:'Klärungen', bs:'Geblockte Schüsse', aer:'Kopfballduelle gewonnen', pkd:'Penalty herausgeholt', sv:'Paraden', hcs:'Hohe Bälle gefangen (TW)', sm:'Herauslaufen (TW)', dis:'Ballverluste' };
+const PH_SHORT = { sot:'Schüsse', kp:'Vorlagen', acnc:'Flanken', cos:'Dribblings', tkw:'Tacklings', int:'Abfangen', clr:'Klärungen', bs:'Blocks', aer:'Kopfball',
+  pkd:'Penalty geholt', sv:'Paraden', hcs:'Hohe Bälle', sm:'Herauslaufen', dis:'Ballverluste' };
+let phCache = new Map();
+// Ø pro Einsatz (Saison), letzte 5 Einsätze, pro 90 Min., Herkunft je Statistik
+function phStats(p){
+  if(phCache.has(p.id)) return phCache.get(p.id);
+  const P = (sleeper.phantom || {})[p.id] || {}, R = (sleeper.real || {})[p.id] || {};
+  const ws = Object.keys(P).map(Number).filter(w => (R[w] || {}).min > 0).sort((a,b) => a - b);
+  let r = null;
+  if(ws.length){
+    const sum = (arr, f) => arr.reduce((t, w) => t + f(P[w]), 0), l5 = ws.slice(-5), by = {};
+    for(const w of ws) for(const [k, [n, v]] of Object.entries(P[w].by)){ const b = (by[k] ||= { n: 0, v: 0 }); b.n += n; b.v += v; }
+    const mins = ws.reduce((t, w) => t + (R[w].min || 0), 0);
+    r = { n: ws.length, ws, avg: sum(ws, x => x.t) / ws.length, l5: sum(l5, x => x.t) / l5.length, clr: sum(ws, x => x.c) / ws.length,
+      tot: sum(ws, x => x.t + x.c) / ws.length, p90: mins ? sum(ws, x => x.t) / mins * 90 : 0,
+      by: Object.entries(by).map(([k, b]) => ({ k, n: b.n / ws.length, v: b.v / ws.length })).sort((a, b) => b.v - a.v) };
+  }
+  phCache.set(p.id, r); return r;
+}
+const phWeek = (p, w) => { const x = ((sleeper.phantom || {})[p.id] || {})[w], r = ((sleeper.real || {})[p.id] || {})[w]; return x && r && r.min > 0 ? x : null; };
+const r2s = x => String(Math.round(x * 100) / 100), sgn2 = x => (x > 0 ? '+' : '') + r2s(x);
+const phWhy = by => Object.entries(by).sort((a, b) => Math.abs(b[1][1]) - Math.abs(a[1][1])).map(([k, [n, v]]) => `${r2s(n)} ${PH_SHORT[k] || k} ${sgn2(v)}`).join(' · ');
+// Punkteregel je Phantom-Statistik in eurer Liga (z. B. «Kopfball: VER/TW +1, MIT/STU +0.5»)
+function phRules(){
+  const ss = sleeper.scoringSettings || {}, P = { gk:'TW', d:'VER', m:'MIT', f:'STU' };
+  return Object.keys(PH_KEYS).map(k => { const v = Object.keys(P).map(c => [c, +ss[`pos_${c}_${k}`] || 0]); if(!v.some(x => x[1])) return '';
+    const grp = {}; for(const [c, x] of v) (grp[x] ||= []).push(P[c]);
+    const txt = Object.keys(grp).length === 1 ? sgn2(v[0][1]) : Object.entries(grp).filter(([x]) => +x).map(([x, ps]) => `${ps.join('/')} ${sgn2(+x)}`).join(', ');
+    return `${PH_SHORT[k]} ${txt}`; }).filter(Boolean).join(' · ');
+}
 async function loadSleeperStats(){
   if(sleeper.real || !sleeper.scoringSettings || !sleeper.matchPid) return;
   const ss = sleeper.scoringSettings;
@@ -1235,7 +1275,7 @@ async function loadSleeperStats(){
   sleeper.season = season;
   const weeks = Array.from({ length: week }, (_, i) => i + 1);
   const res = await Promise.allSettled(weeks.map(w => getJSON(`/api/sl/stats/clubsoccer:epl/${season}/${w}?season_type=regular`)));
-  const real = {}, have = [], unm = {}, raw = {}, scorePos = {};
+  const real = {}, have = [], unm = {}, raw = {}, scorePos = {}, phantom = {};
   const SCORE_POS = { gk:'GKP', d:'DEF', m:'MID', f:'FWD' };
   const RAWK = ['min','gs','p_att','kp','sat','sot','tkw','tk','int','clr','aer','bs','sv','xg','xa','g','at','dis','acnc','yc','rc'];
   res.forEach((r, i) => {
@@ -1253,9 +1293,14 @@ async function loadSleeperStats(){
       const rw = ((raw[fid] ||= {})[weeks[i]] ||= {});
       for(const k of RAWK) if(e.stats[k] != null) rw[k] = (rw[k] || 0) + num(e.stats[k]);
       if(e.opponent) rw.opp = e.opponent;
+      // Phantom-Punkte: Punkte aus allem ausser Toren, Assists, Zu-Null, Gegentoren, Karten und Penaltys
+      const ph = ((phantom[fid] ||= {})[weeks[i]] ||= { t: 0, c: 0, by: {} });
+      for(const k in e.stats){ const m = /^pos_(gk|d|m|f)_(.+)$/.exec(k); if(!m || !ss[k]) continue;
+        const v = (+e.stats[k] || 0) * ss[k]; if(!v) continue;
+        if(PH_KEYS[m[2]]){ ph.t += v; const b = (ph.by[m[2]] ||= [0, 0]); b[0] += +e.stats[k] || 0; b[1] += v; } else ph.c += v; }
     }
   });
-  sleeper.real = real; sleeper.realWeeks = have; sleeper.rawStats = raw; sleeper.scorePos = scorePos;
+  sleeper.real = real; sleeper.realWeeks = have; sleeper.rawStats = raw; sleeper.scorePos = scorePos; sleeper.phantom = phantom; phCache = new Map();
   sleeper.unmatchedStats = Object.values(unm).sort((a,b) => b.pts - a.pts);
   dataStatus.stats = { at: Date.now(), ok: have.length > 0, info: `Spieltage ${have.length ? have[0]+'–'+have[have.length-1] : '–'} · ${Object.keys(real).length} Spieler mit echten Punkten` };
   // Sleeper-Prognose für den nächsten Spieltag
@@ -1666,6 +1711,7 @@ let lastSize = screenSize();
 window.addEventListener('resize', () => { if(screenSize() !== lastSize){ lastSize = screenSize(); colCfg = loadColCfg(); renderHead(); renderTable(); if(!$('colPanel').hidden) renderColPanel(); } });
 function activeCols(){
   if(state.tm === 'gw') return gwCols();
+  if(state.tm === 'ph') return phCols();
   return colCfg.order.filter(k => !colCfg.hidden.includes(k)).map(k => COLDEFS.find(c => c.k === k));
 }
 // Ansicht «Punkte pro Spieltag»: echte Punkte (Liga-Wertung) der letzten Spieltage, sortierbar
@@ -1690,6 +1736,32 @@ function gwCols(){
     { k: 'gsum', t: 'Σ', cls: 'mono', cell: p => `<b>${fmt(gwSum(p, ws), 0)}</b>` },
     { k: 'gavg', t: 'Ø/Spiel', cls: 'mono', cell: p => { const a = gwAvg(p, ws); return a != null ? fmt(a, 1) : '–'; } },
     ...(isMobile() ? [] : [COLDEFS.find(c => c.k === 'prog')])];
+}
+// Ansicht «Phantom-Punkte»: Punkte neben Toren, Assists und Zu-Null – Ø pro Einsatz, letzte 5, pro Spieltag, woher sie kommen
+const phLvl = v => v >= 7 ? 'g3' : v >= 5 ? 'g2' : v >= 3 ? 'g1' : 'g0';
+function phSrcHtml(p){
+  const x = phStats(p); if(!x) return '';
+  const L = [...x.by.filter(b => b.v >= 0.3).slice(0, 3), ...x.by.filter(b => b.v <= -0.3)].map(b => `${PH_SHORT[b.k] || b.k} ${b.v > 0 ? '' : '−'}${fmt(Math.abs(b.v), 1)}`);
+  return L.length ? `<div class="sub phs" title="Ø Phantom-Punkte pro Einsatz nach Herkunft">👻 ${L.map(esc).join(' · ')}</div>` : '';
+}
+function phGwCell(p, w){
+  if(!gwHasGame(p, w)) return '<span class="nodata" title="spielfrei">–</span>';
+  const x = phWeek(p, w), r = gwReal(p, w);
+  if(!x) return `<span class="gwz" title="${esc(`GW ${w}: kein Einsatz`)}">0'</span>`;
+  const why = phWhy(x.by);
+  return `<span class="gwv ${phLvl(x.t)}" title="${esc(`GW ${w}: ${fmt(x.t,1)} Phantom-Punkte${why ? ' (' + why + ')' : ''} · klare Punkte ${fmt(x.c,1)} · total ${fmt(r.pts,1)} · ${r.min} Min.`)}">${fmt(x.t, 0)}</span>`;
+}
+function phCols(){
+  const mob = isMobile(), ws = gwWeeks().slice(-5), X = f => p => { const x = phStats(p); return x ? f(x) : '–'; };
+  return [
+    { k: 'name', t: 'Spieler', l: true, cell: p => nameCell(p) + phSrcHtml(p) },
+    { k: 'ph_avg', t: 'Ø 👻', cls: 'mono', cell: X(x => `<span class="gwv ${phLvl(x.avg)}" title="${esc(`Ø ${fmt(x.avg,1)} Phantom-Punkte pro Einsatz (${x.n} Einsätze) · pro 90 Min. ${fmt(x.p90,1)}`)}">${fmt(x.avg, 1)}</span>`) },
+    { k: 'ph_l5', t: 'Letzte 5', cls: 'mono', cell: X(x => fmt(x.l5, 1) + (x.n >= 6 ? (x.l5 > x.avg * 1.15 ? ' ↗' : x.l5 < x.avg * 0.85 ? ' ↘' : '') : '')) },
+    ...(mob ? [] : ws.map(w => ({ k: 'phw_' + w, t: 'GW ' + w, cls: 'gwc', cell: p => phGwCell(p, w) }))),
+    ...(mob ? [] : [{ k: 'ph_clr', t: 'Ø Klar', cls: 'mono', cell: X(x => fmt(x.clr, 1)) }]),
+    { k: 'ph_tot', t: 'Ø Total', cls: 'mono', cell: X(x => `<b>${fmt(x.tot, 1)}</b>`) },
+    ...(mob ? [] : [{ k: 'ph_n', t: 'Spiele', cls: 'mono', cell: X(x => x.n) }]),
+  ];
 }
 const COLS = COLDEFS; // für Sortier-Logik
 function nameCell(p){
@@ -1724,6 +1796,8 @@ function sortVal(p,k){
   if(k==='past1') return p.pastScore ?? -1;
   if(k==='vorp') return p.vorp ?? -99;
   if(k.startsWith('gw_')){ const r = gwReal(p, +k.slice(3)); return r ? r.pts : (gwHasGame(p, +k.slice(3)) ? -0.5 : -1); }
+  if(k.startsWith('phw_')){ const x = phWeek(p, +k.slice(4)); return x ? x.t : (gwHasGame(p, +k.slice(4)) ? -50 : -99); }
+  if(k.startsWith('ph_')){ const x = phStats(p); return x ? ({ ph_avg: x.avg, ph_l5: x.l5, ph_clr: x.clr, ph_tot: x.tot, ph_n: x.n })[k] : -99; }
   if(k==='gsum') return gwSum(p, gwWeeks());
   if(k==='gavg') return gwAvg(p, gwWeeks()) ?? -1;
   return p[k];
@@ -1784,7 +1858,9 @@ function renderTable(){
     const cls = [state.selected.has(p.id)?'hl':'', (o && o===sleeper.me)?'mine':''].join(' ');
     return `<tr class="${cls}" data-pid="${p.id}">${cols.map(c => `<td class="${c.l?'l':''} ${c.cls||''}">${c.cell(p)}</td>`).join('')}</tr>`;
   }).join('');
-  $('count').innerHTML = `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · <b>Doppeltipp = Spielerprofil</b> · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele (40/30/20/10 %)`;
+  $('count').innerHTML = state.tm === 'ph'
+    ? `${rows.length} Spieler · <b>👻 Phantom-Punkte</b> = alle Punkte ausser Toren, Assists, Zu-Null, Gegentoren, Karten und Penaltys – die Punkte, die man nicht auf dem Schirm hat. Eure Liga-Regeln: ${esc(phRules()) || '–'}. Ø = pro Einsatz in dieser Saison (exakt aus den Sleeper-Stats), Ø Klar = die sichtbaren Punkte, Ø Total = beides. Viele Phantom-Punkte = sicherer Boden, der Spieler punktet auch ohne Tor. Maus über eine Zahl bzw. Doppeltipp = Herkunft im Detail.`
+    : `${rows.length} Spieler${rows.length>400?' (die ersten 400 angezeigt)':''} · Zeile antippen = markieren & vergleichen · <b>Doppeltipp = Spielerprofil</b> · xFP = erwartete Punkte nächster Spieltag (GW ${nextGw}) · Floor–Ceil = schlechtes/gutes Szenario · xMin = erwartete Minuten · Prognose = erwartete Punkte pro Spiel der nächsten 4 Spiele (40/30/20/10 %)`;
   renderCmpPill();
 }
 function renderColPanel(){
@@ -2013,7 +2089,7 @@ function line(p){
   const st = {a:'',d:' FRAGLICH',i:' VERLETZT',s:' GESPERRT',u:' NICHT VERFÜGBAR',n:' NICHT VERFÜGBAR'}[p.status] || '';
   const comp = p.comp ? Object.keys(SCORE_SHORT).filter(k => p.comp[k] != null).map(k => `${SCORE_SHORT[k]} ${Math.round(p.comp[k]*100)}`).join(', ') : '';
   const ki = kiOf(p);
-  return `${p.full} (${teams[p.teamId].short}, ${p.pos})${ownerOf(p) === sleeper.me ? (starts.has(p.id) ? ' ★ IMMER AUFSTELLEN (nie abgeben)' : favs.has(p.id) ? ' 🔒 BEHALTEN (nie abgeben)' : '') : ''} | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
+  return `${p.full} (${teams[p.teamId].short}, ${p.pos})${ownerOf(p) === sleeper.me ? (starts.has(p.id) ? ' ★ IMMER AUFSTELLEN (nie abgeben)' : favs.has(p.id) ? ' 🔒 BEHALTEN (nie abgeben)' : '') : ''} | SCORE ${p.score} [${comp}]${p.past && p.past.length ? ' | Vorsaisons-Scores: ' + p.past.map(x => x.season + ' ' + x.score + ' (' + x.min + ' Min)').join(', ') : ''} | PROGNOSE ${fmt(p.prog,1)} Pkt/Spiel (Mehrwert ${p.vorp > 0 ? '+' : ''}${fmt(p.vorp,1)} ggü. bestem freien Ersatz) | xFP ${fmt(p.xfp,1)}${p.slp != null ? ` (Sleeper-Prognose ${fmt(p.slp,1)})` : ''} (Floor ${fmt(p.floor,0)}, Ceiling ${fmt(p.ceil,0)}, xMin ${Math.round(p.xMin||0)}, Start ${Math.round((p.pStart||0)*100)}%)${p.setPieces&&p.setPieces.length?' | Standards: '+p.setPieces.join('/'):''}${ki?` | KI${p.kiDelta != null ? ' '+sgn(p.kiDelta)+' auf Score '+p.scoreBase : ''}: ${ki.t}`:''} | Ø L10 ${fmt(p.l10,1)} Pkt, Ø L3 ${fmt(p.l3,1)}, Min L5 ${Math.round(p.minL5)}${(() => { const x = phStats(p); return x ? ` | Phantom-Punkte Ø ${fmt(x.avg,1)}/Einsatz (${x.by.filter(b => b.v >= 0.3).slice(0, 3).map(b => PH_SHORT[b.k] + ' ' + fmt(b.v,1)).join(', ')})` : ''; })()} | Saison ${p.minutes} Min | ${p.goals}T ${p.assists}A | xG ${p.xg.toFixed(1)} xA ${p.xa.toFixed(1)}` +
     (p.pos==='GKP'||p.pos==='DEF' ? ` | ${p.cs} ZN` : '') + (p.pos==='GKP' ? ` ${p.saves} Par.` : '') +
     ` | Pkt/90 ${p.pts90.toFixed(1)} | Progn. ${p.proj.toFixed(1)} | ${nx}${st}${p.news ? ' – '+p.news : ''}` +
     ((p.progParts||[]).length ? ' | PRO SPIEL: ' + p.progParts.slice(0,2).map(x => `GW${x.gw} ${x.home?'vs':'@'} ${teams[x.opp]?.short||'?'} ${fmt(x.pts,1)} Pkt (Team-Tore ${fmt(x.tore,1)}, Gegentore ${fmt(x.gegentore,1)}, Zu-Null ${Math.round(x.cs*100)}%)`).join('; ') : '');
@@ -3291,6 +3367,22 @@ function playerSheet(p){
       `</tbody></table></div><div class="nodata">* eingewechselt · Pkt = echte Punkte nach eurer Liga-Wertung</div></div>`;
   }
 
+  // Phantom-Punkte: woher die Punkte neben Toren und Zu-Null kommen
+  const ph = phStats(p);
+  if(ph){
+    const peers = players.filter(q => q.pos === p.pos).map(q => [q, phStats(q)]).filter(([, x]) => x && x.n >= 3).sort((a, b) => b[1].avg - a[1].avg);
+    const rk = peers.findIndex(([q]) => q.id === p.id);
+    const tr = ph.n >= 6 ? (ph.l5 > ph.avg * 1.15 ? ' ↗' : ph.l5 < ph.avg * 0.85 ? ' ↘' : ' →') : '';
+    const oppW = w => { const f = allFixtures.find(f => f.event === w && (f.team_h === p.teamId || f.team_a === p.teamId)); return f ? (f.team_h === p.teamId ? teams[f.team_a]?.short : (teams[f.team_h]?.short || '') + ' (a)') : ''; };
+    h += `<div class="pvsec"><h3>👻 Phantom-Punkte – Punkte neben Toren & Zu-Null</h3><div class="pvfacts">
+      <div><span>Ø pro Einsatz (Saison)</span><b>${fmt(ph.avg,1)}</b> von ${fmt(ph.tot,1)} total</div><div><span>Letzte 5 Einsätze</span>${fmt(ph.l5,1)}${tr}</div>
+      <div><span>Pro 90 Minuten</span>${fmt(ph.p90,1)}</div><div><span>Rang unter allen ${POS_PL[p.pos]}</span>${rk >= 0 ? (rk + 1) + '. von ' + peers.length : '–'}</div></div>
+      <div class="phlist">${ph.by.filter(b => Math.abs(b.v) >= 0.05).map(b => `<div><span>${esc(PH_KEYS[b.k] || b.k)}</span><span class="nodata">${r2s(Math.round(b.n * 10) / 10)} pro Spiel</span><b class="${b.v < 0 ? 'neg' : ''}">${sgn2(Math.round(b.v * 100) / 100)}</b></div>`).join('')}</div>
+      <div style="overflow-x:auto"><table class="pvgames"><thead><tr><th class="l">GW</th><th class="l">Gegner</th><th>Min</th><th>👻</th><th>Klar</th><th>Total</th><th class="l">woher</th></tr></thead><tbody>` +
+      [...ph.ws].reverse().slice(0, 8).map(w => { const x = phWeek(p, w), r = gwReal(p, w); return `<tr><td class="l">${w}</td><td class="l">${esc(oppW(w) || '')}</td><td>${r.min}</td><td><b>${fmt(x.t,1)}</b></td><td>${fmt(x.c,1)}</td><td>${fmt(r.pts,1)}</td><td class="l phwhy">${esc(phWhy(x.by))}</td></tr>`; }).join('') +
+      `</tbody></table></div><div class="nodata">Phantom-Punkte = alles ausser Toren, Assists, Zu-Null, Gegentoren, Karten und Penaltys (nach euren Liga-Regeln, exakt aus den Sleeper-Stats). «Klar» = genau diese sichtbaren Punkte.</div></div>`;
+  }
+
   // Nächste Spiele
   if(p.progParts && p.progParts.length){
     const att = p.pos === 'FWD' || p.pos === 'MID';
@@ -3383,13 +3475,13 @@ $('thead').addEventListener('click', e => {
   if(state.sort===c.k) state.dir *= -1; else { state.sort=c.k; state.dir = c.l ? 1 : -1; }
   renderHead(); renderTable();
 });
-state.tm = (() => { try { return localStorage.getItem('plscout_tableMode') === 'gw' ? 'gw' : 'std'; } catch(e){ return 'std'; } })();
+state.tm = (() => { try { const v = localStorage.getItem('plscout_tableMode'); return v === 'gw' || v === 'ph' ? v : 'std'; } catch(e){ return 'std'; } })();
 const syncTm = () => $('tableMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tm === state.tm));
 syncTm();
 $('tableMode').addEventListener('click', e => {
   const b = e.target.closest('button[data-tm]'); if(!b) return;
   state.tm = b.dataset.tm; try { localStorage.setItem('plscout_tableMode', state.tm); } catch(_){}
-  if(!activeCols().some(c => c.k === state.sort)){ state.sort = state.tm === 'gw' ? 'gsum' : 'score'; state.dir = -1; }
+  if(!activeCols().some(c => c.k === state.sort)){ state.sort = state.tm === 'gw' ? 'gsum' : state.tm === 'ph' ? 'ph_avg' : 'score'; state.dir = -1; }
   syncTm(); renderHead(); renderTable();
 });
 $('cmp').addEventListener('click', e => {
